@@ -5,10 +5,11 @@ import UploadZone from '@/components/UploadZone';
 import ProgressTracker from '@/components/ProgressTracker';
 import ResultCard from '@/components/ResultCard';
 import { extractAndDeduplicateFrames } from '@/lib/ffmpegService';
-import { stringSimilarity } from '@/lib/stringSim';
+import { stringSimilarity, wordOverlapSimilarity } from '@/lib/stringSim';
 import { supabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 import { Download, Copy, AlertCircle } from 'lucide-react';
+import { createWorker } from 'tesseract.js';
 
 type StepStatus = 'idle' | 'active' | 'completed';
 
@@ -28,7 +29,7 @@ interface Question {
 }
 
 export default function Home() {
-  const [appState, setAppState] = useState<'UPLOAD' | 'PROCESSING' | 'RESULTS'>('UPLOAD');
+  const [appState, setAppState] = useState<'UPLOAD' | 'ESTIMATE' | 'PROCESSING' | 'RESULTS'>('UPLOAD');
   const [isOverLimit, setIsOverLimit] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -43,6 +44,9 @@ export default function Home() {
   const [finalQuestions, setFinalQuestions] = useState<Question[]>([]);
   const [subject, setSubject] = useState('Unknown');
   const [jobId, setJobId] = useState('');
+  
+  const [pendingFrames, setPendingFrames] = useState<any[]>([]);
+  const [estimatedCost, setEstimatedCost] = useState(0);
 
   useEffect(() => {
     const uses = parseInt(localStorage.getItem('testscan_uses') || '0', 10);
@@ -54,7 +58,6 @@ export default function Home() {
   };
 
   const handleUpload = async (file: File) => {
-    // Increment usage
     const newCount = usageCount + 1;
     localStorage.setItem('testscan_uses', newCount.toString());
     setUsageCount(newCount);
@@ -64,22 +67,55 @@ export default function Home() {
     setSteps(prev => prev.map(s => ({ ...s, status: 'idle', subtext: '' })));
 
     try {
-      // Step 1: Extract frames
       updateStep('extract', 'active');
       const frames = await extractAndDeduplicateFrames(file);
-      updateStep('extract', 'completed');
 
       if (frames.length === 0) {
         throw new Error("No usable frames extracted. Video might be too short or empty.");
       }
 
-      // Step 2: Detect Questions
-      updateStep('detect', 'active', `Checking ${frames.length} frames...`);
+      updateStep('extract', 'active', 'Scanning frames locally for meaningful text data...');
+      
+      const worker = await createWorker('eng');
+      const textRichFrames = [];
+      
+      for (const frame of frames) {
+        const ret = await worker.recognize(frame.base64);
+        const words = ret.data.text.trim().split(/\s+/).filter(w => w.length > 0);
+        if (words.length >= 20) {
+          textRichFrames.push(frame);
+        }
+      }
+      await worker.terminate();
+
+      if (textRichFrames.length === 0) {
+         throw new Error("No textual data dense enough to process. AI analysis aborted.");
+      }
+
+      setPendingFrames(textRichFrames);
+      updateStep('extract', 'completed');
+      
+      const estQuestions = textRichFrames.length; // assumes ~1 Q per frame 
+      const cost = (textRichFrames.length * 0.001) + (estQuestions * 0.003);
+      setEstimatedCost(cost);
+      setAppState('ESTIMATE');
+
+    } catch (err: any) {
+      console.error('Processing error:', err);
+      setErrorMsg(err.message || String(err) || 'An unexpected error occurred during processing.');
+      setAppState('UPLOAD');
+    }
+  };
+
+  const confirmAndProcess = async () => {
+    setAppState('PROCESSING');
+    try {
+      updateStep('detect', 'active', `Running AI detection on ${pendingFrames.length} meaningful frames...`);
       let allDetected: Question[] = [];
       let noQuestionFrames = 0;
 
-      for (let i = 0; i < frames.length; i++) {
-        const frame = frames[i];
+      for (let i = 0; i < pendingFrames.length; i++) {
+        const frame = pendingFrames[i];
         try {
           const res = await fetch('/api/detect', {
             method: 'POST',
@@ -101,11 +137,11 @@ export default function Home() {
         }
       }
 
-      if (noQuestionFrames / frames.length > 0.8) {
-        throw new Error("No questions detected. Make sure your video clearly shows the test.");
+      if (allDetected.length === 0) {
+        throw new Error("Detection failed. Please check video resolution.");
       }
 
-      // Cross-frame deduplication (similarity > 85%)
+      // Cross-frame deduplication (similarity > 85% word overlap)
       const uniqueFound: Question[] = [];
       for (const q of allDetected) {
         if (!q.question_text || q.question_text.trim().length < 5) continue;
@@ -113,7 +149,7 @@ export default function Home() {
         let isDuplicate = false;
         for (let i = 0; i < uniqueFound.length; i++) {
           const uq = uniqueFound[i];
-          const sim = stringSimilarity(q.question_text, uq.raw_text);
+          const sim = wordOverlapSimilarity(q.question_text, uq.raw_text);
           if (sim > 0.85) {
             // Keep the longer text version
             if (q.question_text.length > uq.raw_text.length) {
@@ -132,17 +168,15 @@ export default function Home() {
         }
       }
 
-      // Re-number
       uniqueFound.forEach((q, idx) => { q.question_number = idx + 1; });
       updateStep('detect', 'completed');
 
-      // Step 3: Solve Unique
-      updateStep('solve', 'active', `Solving ${uniqueFound.length} questions...`);
+      updateStep('solve', 'active', `Solving ${uniqueFound.length} unique questions...`);
       for (const q of uniqueFound) {
         try {
           const res = await fetch('/api/solve', {
             method: 'POST',
-            body: JSON.stringify({ question_text: q.raw_text, question_type: q.question_type, options: q.options }),
+            body: JSON.stringify({ question_text: q.raw_text, options: q.options }),
             headers: { 'Content-Type': 'application/json' }
           });
           const solveData = await res.json();
@@ -157,8 +191,7 @@ export default function Home() {
       }
       updateStep('solve', 'completed');
 
-      // Predict subject
-      updateStep('done', 'active', 'Finalizing...');
+      updateStep('done', 'active', 'Finalizing output...');
       try {
         const clsRes = await fetch('/api/classify', {
           method: 'POST',
@@ -171,11 +204,9 @@ export default function Home() {
         setSubject('Other');
       }
 
-      // Save to Supabase (Upload images, create Job, create Questions)
       const jId = uuidv4();
       setJobId(jId);
 
-      // We won't block UI entirely for image upload if it is slow, but we will wait here for simplicity.
       let solvedCount = 0;
       for (const q of uniqueFound) {
         if (q.answer) solvedCount++;
@@ -218,8 +249,6 @@ export default function Home() {
 
       setFinalQuestions(uniqueFound);
       updateStep('done', 'completed');
-      
-      // small delay to show done state
       setTimeout(() => setAppState('RESULTS'), 800);
 
     } catch (err: any) {
@@ -273,6 +302,25 @@ export default function Home() {
               )}
               <UploadZone onUpload={handleUpload} isOverLimit={false} />
             </div>
+          </div>
+        )}
+
+        {appState === 'ESTIMATE' && (
+          <div className="flex-1 flex flex-col items-center justify-center animate-in fade-in duration-1000">
+             <div className="border border-zinc-800 bg-zinc-900/20 backdrop-blur-sm p-12 max-w-xl w-full text-center">
+                 <h2 className="font-mono text-sm tracking-[0.3em] uppercase text-zinc-500 mb-8">Cost Gateway Authorization</h2>
+                 <p className="text-zinc-300 font-light text-lg mb-4">
+                    Extracted <span className="text-electric-cyan font-mono">{pendingFrames.length}</span> meaningful frames via local parse.
+                 </p>
+                 <div className="text-4xl font-mono text-zinc-100 my-8 py-6 border-y border-zinc-800/50 flex flex-col items-center gap-2">
+                    <span className="text-[10px] text-zinc-500 tracking-widest uppercase">Estimated Compute Cost</span>
+                    ~${estimatedCost.toFixed(3)}
+                 </div>
+                 <div className="flex gap-4 w-full mt-10">
+                    <button onClick={() => setAppState('UPLOAD')} className="flex-1 px-4 py-3 border border-zinc-800 text-zinc-400 font-mono text-xs hover:bg-zinc-800 hover:text-white transition-colors uppercase tracking-widest">Abort</button>
+                    <button onClick={confirmAndProcess} className="flex-1 px-4 py-3 bg-electric-cyan text-black font-mono font-bold text-xs hover:bg-white transition-colors uppercase tracking-widest">Authorize & Transmit</button>
+                 </div>
+             </div>
           </div>
         )}
 

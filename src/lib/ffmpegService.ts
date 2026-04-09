@@ -120,7 +120,7 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
     const currentPixels = getPixels(canvas);
     URL.revokeObjectURL(url);
 
-    if (lastPixelData && isSimilar(lastPixelData, currentPixels, 0.95)) {
+    if (lastPixelData && isSimilar(lastPixelData, currentPixels, 0.90)) {
       // It's a duplicate frame, skip
       continue;
     }

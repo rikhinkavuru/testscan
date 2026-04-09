@@ -34,3 +34,19 @@ function editDistance(s1: string, s2: string): number {
   }
   return costs[s2.length];
 }
+
+export function wordOverlapSimilarity(s1: string, s2: string): number {
+  if (!s1 || !s2) return 0;
+  
+  const words1 = Array.from(new Set(s1.toLowerCase().match(/\b\w+\b/g) || []));
+  const words2 = Array.from(new Set(s2.toLowerCase().match(/\b\w+\b/g) || []));
+  
+  if (words1.length === 0 || words2.length === 0) return 0;
+
+  const intersection = words1.filter(w => words2.includes(w)).length;
+  const smallerLength = Math.min(words1.length, words2.length);
+
+  // Measure how many words of the smaller question are present in the larger one
+  return intersection / smallerLength;
+}
+
