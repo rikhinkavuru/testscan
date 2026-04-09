@@ -233,27 +233,25 @@ export default function Home() {
   const confidencePercent = finalQuestions.length ? Math.round((highConfCount / finalQuestions.length) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] font-sans selection:bg-indigo-100 selection:text-indigo-900">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-lg leading-none">
-              T
-            </div>
-            <span className="font-bold text-xl text-gray-900 tracking-tight">TestScan</span>
+    <div className="min-h-screen bg-transparent font-sans flex flex-col relative w-full">
+      {/* Immersive Top Bar */}
+      <header className="w-full border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-50">
+        <div className="w-full px-8 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-2 h-2 bg-electric-cyan rounded-none animate-pulse shadow-[0_0_12px_rgba(0,240,255,0.8)]"></div>
+            <span className="font-mono text-xs text-zinc-400 tracking-[0.2em] uppercase">SYSTEM // TestScan.OS</span>
           </div>
           {appState === 'RESULTS' && (
-            <div className="flex items-center gap-3">
-              <button className="hidden sm:flex text-sm font-semibold text-gray-600 hover:text-gray-900 items-center gap-1.5 transition-colors" onClick={() => {
+            <div className="flex items-center gap-6">
+              <button className="hidden sm:flex text-xs font-mono text-zinc-500 hover:text-zinc-300 tracking-wider items-center gap-2 transition-colors uppercase" onClick={() => {
                 const text = finalQuestions.map(q => `${q.question_number}. ${q.answer}`).join('\\n');
                 navigator.clipboard.writeText(text);
-                alert('Answers copied to clipboard!');
+                alert('DATA // Copied to clipboard.');
               }}>
-                <Copy className="w-4 h-4" /> Copy All Answers
+                <Copy className="w-3 h-3" /> [ Copy_Data ]
               </button>
-              <button className="text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 items-center gap-1.5 px-4 py-2 rounded-lg transition-colors flex shadow-sm">
-                <Download className="w-4 h-4" /> Download PDF
+              <button className="text-xs font-mono text-black bg-electric-cyan hover:bg-white tracking-widest items-center gap-2 px-5 py-2 transition-all flex uppercase">
+                <Download className="w-3 h-3" /> Export_PDF
               </button>
             </div>
           )}
@@ -261,48 +259,53 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-5xl mx-auto px-4 py-12">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 md:px-8 py-16 flex flex-col relative">
         {appState === 'UPLOAD' && (
-          <div className="pt-10">
-            {errorMsg && (
-              <div className="mb-8 p-4 bg-red-50 text-red-700 border border-red-100 rounded-xl flex items-center gap-3 max-w-2xl mx-auto">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <span className="font-medium">{errorMsg}</span>
-                <button onClick={() => setErrorMsg(null)} className="ml-auto text-sm font-bold opacity-70 hover:opacity-100">Dismiss</button>
-              </div>
-            )}
-            <UploadZone onUpload={handleUpload} isOverLimit={false} />
+          <div className="flex-1 flex items-center justify-center animate-in fade-in duration-1000">
+            <div className="w-full">
+              {errorMsg && (
+                <div className="mb-12 p-1 border-l-2 border-red-500 bg-red-500/10 text-red-400 flex items-start gap-3 max-w-3xl mx-auto backdrop-blur-sm">
+                  <div className="px-4 py-3 flex-1 font-mono text-xs tracking-wider uppercase">
+                    [ERR_CRITICAL]: {errorMsg}
+                  </div>
+                  <button onClick={() => setErrorMsg(null)} className="px-4 py-3 text-[10px] font-mono tracking-widest hover:text-white transition-colors">DIMISS</button>
+                </div>
+              )}
+              <UploadZone onUpload={handleUpload} isOverLimit={false} />
+            </div>
           </div>
         )}
 
         {appState === 'PROCESSING' && (
-          <div className="pt-20">
+          <div className="flex-1 flex items-center justify-center w-full">
             <ProgressTracker steps={steps} />
           </div>
         )}
 
         {appState === 'RESULTS' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {/* Summary Card */}
-            <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-6 divide-y md:divide-y-0 md:divide-x divide-gray-100">
-              <div className="text-center md:pb-0 pb-4">
-                <p className="text-sm font-medium text-gray-500 mb-1">Total Questions</p>
-                <h3 className="text-4xl font-bold text-gray-900">{finalQuestions.length}</h3>
+          <div className="w-full space-y-12 animate-in fade-in duration-1000 ease-out">
+            {/* Spec-Sheet Summary Card */}
+            <div className="w-full border border-zinc-800 bg-zinc-900/20 backdrop-blur-sm p-8 grid grid-cols-1 md:grid-cols-3 gap-8 divide-y md:divide-y-0 md:divide-x divide-zinc-800">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-mono tracking-[0.2em] text-zinc-500 uppercase mb-2">Metadata // Total Captured</span>
+                <span className="text-5xl font-light text-zinc-100 font-mono">{finalQuestions.length}</span>
               </div>
-              <div className="text-center md:pt-0 pt-4">
-                <p className="text-sm font-medium text-gray-500 mb-1">Subject Detected</p>
-                <div className="inline-block mt-1 px-4 py-1.5 rounded-full bg-indigo-50 text-indigo-700 font-bold text-lg">
-                  {subject}
+              <div className="flex flex-col md:px-8">
+                <span className="text-[10px] font-mono tracking-[0.2em] text-zinc-500 uppercase mb-2">Classification // Domain</span>
+                <div className="text-3xl font-light text-electric-cyan lowercase mt-1">
+                  [{subject}]
                 </div>
               </div>
-              <div className="text-center md:pt-0 pt-4">
-                <p className="text-sm font-medium text-gray-500 mb-1">Solved Confidently</p>
-                <h3 className="text-4xl font-bold text-gray-900 text-green-500">{confidencePercent}%</h3>
+              <div className="flex flex-col md:px-8">
+                <span className="text-[10px] font-mono tracking-[0.2em] text-zinc-500 uppercase mb-2">Validation // Confidence Index</span>
+                <span className="text-5xl font-light text-zinc-100 font-mono flex items-baseline">
+                  {confidencePercent}<span className="text-2xl text-zinc-600">%</span>
+                </span>
               </div>
             </div>
 
-            {/* Questions List */}
-            <div className="space-y-6">
+            {/* Questions Grid */}
+            <div className="w-full space-y-16">
               {finalQuestions.map((q) => (
                 <ResultCard
                   key={q.id}

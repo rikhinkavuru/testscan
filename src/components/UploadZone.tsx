@@ -1,14 +1,13 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileVideo, AlertCircle } from 'lucide-react';
+import { Share, TerminalSquare } from 'lucide-react';
 
 interface UploadZoneProps {
   onUpload: (file: File) => void;
   isOverLimit: boolean;
 }
 
-export default function UploadZone({ onUpload, isOverLimit }: UploadZoneProps) {
+export default function UploadZone({ onUpload }: UploadZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -22,105 +21,77 @@ export default function UploadZone({ onUpload, isOverLimit }: UploadZoneProps) {
   };
 
   const validateAndProcessFile = (file: File) => {
-    setError(null);
-    if (!['video/mp4', 'video/quicktime', 'video/webm'].includes(file.type)) {
-      setError('Please upload a valid .mp4, .mov, or .webm file.');
-      return;
-    }
-    if (file.size > 500 * 1024 * 1024) {
-      setError('File size exceeds 500MB limit.');
-      return;
-    }
+    if (!['video/mp4', 'video/quicktime', 'video/webm'].includes(file.type)) return;
     onUpload(file);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    
-    if (isOverLimit) return;
-    
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       validateAndProcessFile(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isOverLimit) return;
-    
     if (e.target.files && e.target.files.length > 0) {
       validateAndProcessFile(e.target.files[0]);
     }
   };
 
-  if (isOverLimit) {
-    return (
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 max-w-xl w-full mx-auto text-center">
-        <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Usage Limit Reached</h2>
-        <p className="text-gray-600 mb-6">You've used your 3 free analyses. Upgrade to continue.</p>
-        <button className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors">
-          Upgrade Plan
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-2xl w-full mx-auto">
+    <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
+      <div className="text-center mb-16">
+        <h1 className="text-6xl md:text-8xl font-light tracking-tighter text-zinc-100 mb-6">
+          Initialize <span className="text-electric-cyan font-serif italic pr-4">Sequence</span>
+        </h1>
+        <p className="font-mono text-xs tracking-widest uppercase text-zinc-500 max-w-lg mx-auto leading-relaxed">
+          Supply raw video metadata for autonomous algorithmic extraction. Target acceptable formats: mp4 // mov // webm.
+        </p>
+      </div>
+
       <div
-        className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-all cursor-pointer ${
-          isDragOver ? 'border-indigo-600 bg-indigo-50/50 scale-[1.02]' : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
+        className={`relative w-full max-w-2xl aspect-[21/9] border border-zinc-800 bg-zinc-900/20 backdrop-blur-sm transition-all duration-700 ease-out cursor-pointer flex flex-col items-center justify-center overflow-hidden group ${
+          isDragOver ? 'border-electric-cyan bg-electric-cyan/5 scale-[1.02]' : 'hover:border-zinc-700'
         }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
       >
-        <input
-          type="file"
-          ref={fileInputRef}
-          className="hidden"
-          accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm"
-          onChange={handleFileChange}
-        />
+        <input type="file" ref={fileInputRef} className="hidden" accept=".mp4,.mov,.webm" onChange={handleFileChange} />
         
-        <div className="mx-auto w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mb-6">
-          <UploadCloud className="w-10 h-10 text-indigo-600" />
-        </div>
-        
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Upload your test recording</h2>
-        <p className="text-gray-500 mb-8 max-w-md mx-auto">
-          Drag and drop an .mp4, .mov, or .webm file up to 500MB, or click to browse.
-        </p>
-        
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg flex items-center gap-2 max-w-md mx-auto">
-            <AlertCircle className="w-5 h-5 shrink-0" />
-            <span className="text-sm">{error}</span>
-          </div>
-        )}
+        {/* Corner Accents */}
+        <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-white/40 group-hover:border-electric-cyan transition-colors" />
+        <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-white/40 group-hover:border-electric-cyan transition-colors" />
+        <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-white/40 group-hover:border-electric-cyan transition-colors" />
+        <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-white/40 group-hover:border-electric-cyan transition-colors" />
 
-        <button className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-full shadow-lg shadow-indigo-600/20 transition-all active:scale-95 inline-flex items-center gap-2">
-          Analyze My Test <span className="text-lg leading-none shrink-0">↗</span>
-        </button>
+        <div className="flex flex-col items-center gap-6 z-10 transition-transform duration-500 group-hover:scale-[1.05]">
+          <div className="w-16 h-16 border border-zinc-800 rounded-full flex items-center justify-center bg-zinc-950/50 group-hover:border-electric-cyan/50 group-hover:shadow-[0_0_30px_rgba(0,240,255,0.15)] transition-all">
+            <Share className="w-6 h-6 text-zinc-400 group-hover:text-electric-cyan transition-colors" strokeWidth={1} />
+          </div>
+          <span className="font-mono text-xs uppercase tracking-[0.3em] text-zinc-400 group-hover:text-zinc-100 transition-colors">
+            {isDragOver ? 'Awaiting Input...' : 'Select File or Drop Here'}
+          </span>
+        </div>
       </div>
 
-      <div className="mt-12 grid grid-cols-3 gap-6 text-center px-4">
-        <div>
-          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm mx-auto mb-4 text-indigo-600 font-bold">1</div>
-          <h3 className="font-semibold text-gray-900 mb-1">Upload video</h3>
-          <p className="text-sm text-gray-500">Record yourself scrolling through the exam</p>
+      <div className="w-full max-w-2xl mt-12 grid grid-cols-1 md:grid-cols-3 gap-px bg-zinc-800/50">
+        <div className="bg-zinc-950 p-6 flex flex-col gap-4 group hover:bg-zinc-900 transition-colors">
+          <TerminalSquare className="w-4 h-4 text-zinc-600 group-hover:text-zinc-300" strokeWidth={1}/>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Stage 01</span>
+          <p className="text-sm font-light text-zinc-300">Intelligent frame dissection via purely client-side WASM binaries.</p>
         </div>
-        <div>
-          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm mx-auto mb-4 text-indigo-600 font-bold">2</div>
-          <h3 className="font-semibold text-gray-900 mb-1">AI scans frames</h3>
-          <p className="text-sm text-gray-500">We detect and deduplicate questions</p>
+        <div className="bg-zinc-950 p-6 flex flex-col gap-4 group hover:bg-zinc-900 transition-colors">
+           <TerminalSquare className="w-4 h-4 text-zinc-600 group-hover:text-zinc-300" strokeWidth={1}/>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Stage 02</span>
+          <p className="text-sm font-light text-zinc-300">Neural network optical character recognition and string deduplication.</p>
         </div>
-        <div>
-          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm mx-auto mb-4 text-indigo-600 font-bold">3</div>
-          <h3 className="font-semibold text-gray-900 mb-1">Get your answers</h3>
-          <p className="text-sm text-gray-500">Step-by-step solutions instantly</p>
+        <div className="bg-zinc-950 p-6 flex flex-col gap-4 group hover:bg-zinc-900 transition-colors">
+           <TerminalSquare className="w-4 h-4 text-zinc-600 group-hover:text-zinc-300" strokeWidth={1}/>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Stage 03</span>
+          <p className="text-sm font-light text-zinc-300">Algorithmic resolution output formatting with step-by-step logic.</p>
         </div>
       </div>
     </div>
