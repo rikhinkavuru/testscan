@@ -47,9 +47,6 @@ export default function Home() {
   useEffect(() => {
     const uses = parseInt(localStorage.getItem('testscan_uses') || '0', 10);
     setUsageCount(uses);
-    if (uses >= 3) {
-      setIsOverLimit(true);
-    }
   }, []);
 
   const updateStep = (id: string, status: StepStatus, subtext?: string) => {
@@ -226,7 +223,8 @@ export default function Home() {
       setTimeout(() => setAppState('RESULTS'), 800);
 
     } catch (err: any) {
-      setErrorMsg(err.message || 'An unexpected error occurred during processing.');
+      console.error('Processing error:', err);
+      setErrorMsg(err.message || String(err) || 'An unexpected error occurred during processing.');
       setAppState('UPLOAD');
     }
   };
@@ -273,7 +271,7 @@ export default function Home() {
                 <button onClick={() => setErrorMsg(null)} className="ml-auto text-sm font-bold opacity-70 hover:opacity-100">Dismiss</button>
               </div>
             )}
-            <UploadZone onUpload={handleUpload} isOverLimit={isOverLimit} />
+            <UploadZone onUpload={handleUpload} isOverLimit={false} />
           </div>
         )}
 

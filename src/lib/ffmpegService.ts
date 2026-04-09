@@ -14,6 +14,10 @@ export async function initFFmpeg(): Promise<FFmpeg> {
     wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
   });
   
+  ffmpeg.on('log', ({ message }) => {
+    console.log('[FFmpeg]', message);
+  });
+  
   return ffmpeg;
 }
 
@@ -62,23 +66,29 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
   await ff.writeFile(filename, await fetchFile(file));
   
   // Create a directory to output frames
-  await ff.exec(['-mkdir', '-p', 'out']);
+  try {
+    await ff.createDir('out');
+  } catch (e) {}
   
   // Extract 1 frame every 2 seconds (-r 0.5)
   // Scale down a bit to speed up processing and save memory, if needed. 
   // Let's use 1280x720 (720p) max.
   await ff.exec([
     '-i', filename,
+    '-an',
+    '-sn',
     '-r', '0.5',
-    '-vf', 'scale=1280:-1',
+    '-vf', 'scale=640:-1',
     '-q:v', '5',
     'out/frame_%d.jpg'
   ]);
   
   const files = await ff.listDir('out');
   const frames = files.filter(f => f.name.endsWith('.jpg')).sort((a, b) => {
-    const numA = parseInt(a.name.match(/\\d+/)![0], 10);
-    const numB = parseInt(b.name.match(/\\d+/)![0], 10);
+    const matchA = a.name.match(/\d+/);
+    const matchB = b.name.match(/\d+/);
+    const numA = matchA ? parseInt(matchA[0], 10) : 0;
+    const numB = matchB ? parseInt(matchB[0], 10) : 0;
     return numA - numB;
   });
 
@@ -131,7 +141,9 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
   for (const frame of frames) {
     await ff.deleteFile(`out/${frame.name}`);
   }
-  await ff.exec(['-rmdir', 'out']);
+  try {
+    await ff.deleteDir('out');
+  } catch (e) {}
   
   return validFrames;
 }
