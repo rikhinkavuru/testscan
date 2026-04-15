@@ -28,6 +28,19 @@ interface Question {
   question_number?: number;
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 export default function Home() {
   const [appState, setAppState] = useState<'UPLOAD' | 'ESTIMATE' | 'PROCESSING' | 'RESULTS'>('UPLOAD');
   const [isOverLimit, setIsOverLimit] = useState(false);
@@ -67,26 +80,59 @@ export default function Home() {
     setSteps(prev => prev.map(s => ({ ...s, status: 'idle', subtext: '' })));
 
     try {
-      updateStep('extract', 'active');
-      const frames = await extractAndDeduplicateFrames(file);
+      updateStep('extract', 'active', 'Initializing local extraction engine...');
+      const frames = await withTimeout(
+        extractAndDeduplicateFrames(file),
+        180000,
+        'Frame extraction timed out. Please try a shorter video or retry.',
+      );
 
       if (frames.length === 0) {
         throw new Error("No usable frames extracted. Video might be too short or empty.");
       }
 
-      updateStep('extract', 'active', 'Scanning frames locally for meaningful text data...');
-      
-      const worker = await createWorker('eng');
-      const textRichFrames = [];
-      
-      for (const frame of frames) {
-        const ret = await worker.recognize(frame.base64);
-        const words = ret.data.text.trim().split(/\s+/).filter(w => w.length > 0);
-        if (words.length >= 20) {
-          textRichFrames.push(frame);
+      updateStep('extract', 'active', `Analyzing ${frames.length} extracted frame(s) for text density...`);
+
+      let textRichFrames = frames;
+      let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
+
+      try {
+        worker = await withTimeout(
+          createWorker('eng'),
+          45000,
+          'OCR engine initialization timed out.',
+        );
+
+        const filteredFrames: typeof frames = [];
+        for (let i = 0; i < frames.length; i++) {
+          const frame = frames[i];
+          updateStep('extract', 'active', `OCR pass ${i + 1}/${frames.length}...`);
+          const ret = await withTimeout(
+            worker.recognize(frame.base64),
+            20000,
+            `OCR timed out on frame ${i + 1}.`,
+          );
+          const words = ret.data.text.trim().split(/\s+/).filter(w => w.length > 0);
+          if (words.length >= 20) {
+            filteredFrames.push(frame);
+          }
+        }
+
+        if (filteredFrames.length > 0) {
+          textRichFrames = filteredFrames;
+        }
+      } catch (ocrError) {
+        console.error('OCR pre-filter failed; continuing with extracted frames.', ocrError);
+        updateStep('extract', 'active', 'OCR pre-filter unavailable, continuing with extracted frames...');
+      } finally {
+        if (worker) {
+          try {
+            await worker.terminate();
+          } catch (terminateError) {
+            console.error('Failed to terminate OCR worker cleanly', terminateError);
+          }
         }
       }
-      await worker.terminate();
 
       if (textRichFrames.length === 0) {
          throw new Error("No textual data dense enough to process. AI analysis aborted.");
@@ -192,17 +238,19 @@ export default function Home() {
       updateStep('solve', 'completed');
 
       updateStep('done', 'active', 'Finalizing output...');
+      let derivedSubject = 'Other';
       try {
-        const clsRes = await fetch('/api/classify', {
-          method: 'POST',
+         const clsRes = await fetch('/api/classify', {
+           method: 'POST',
           body: JSON.stringify({ questions: uniqueFound }),
-          headers: { 'Content-Type': 'application/json' }
-        });
-        const clsData = await clsRes.json();
-        setSubject(clsData.subject || 'Other');
+           headers: { 'Content-Type': 'application/json' }
+         });
+         const clsData = await clsRes.json();
+         derivedSubject = clsData.subject || 'Other';
       } catch (e) {
-        setSubject('Other');
+         derivedSubject = 'Other';
       }
+      setSubject(derivedSubject);
 
       const jId = uuidv4();
       setJobId(jId);
@@ -227,7 +275,7 @@ export default function Home() {
       await supabase.from('jobs').insert([{
         id: jId,
         status: 'completed',
-        subject: subject,
+        subject: derivedSubject,
         total_questions: uniqueFound.length,
         solved_count: solvedCount
       }]);
