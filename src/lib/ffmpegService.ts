@@ -140,7 +140,9 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
 
   for (const frame of frames) {
     const frameData = await ff.readFile(`out/${frame.name}`);
-    const blob = new Blob([frameData], { type: 'image/jpeg' });
+    // Copy into a fresh Uint8Array backed by a plain ArrayBuffer so it is
+    // assignable to BlobPart (SharedArrayBuffer is not accepted by Blob).
+    const blob = new Blob([new Uint8Array(frameData as Uint8Array)], { type: 'image/jpeg' });
     
     // Convert to Image to draw on canvas for pixel comparison
     const url = URL.createObjectURL(blob);
