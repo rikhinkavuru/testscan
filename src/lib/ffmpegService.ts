@@ -107,7 +107,7 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
   // Create a directory to output frames
   try {
     await ff.createDir('out');
-  } catch (_error) {}
+  } catch {}
   
   // Extract 1 frame every 2 seconds (-r 0.5)
   // Scale down a bit to speed up processing and save memory, if needed. 
@@ -188,7 +188,7 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
   }
   try {
     await ff.deleteDir('out');
-  } catch (_error) {}
+  } catch {}
   
   return validFrames;
 }
