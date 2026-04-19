@@ -2,6 +2,7 @@
 
 @theme {
   --color-electric-cyan: #00F0FF;
+  --color-electric-cyan-light: #0891B2;
   --color-electric-violet: #8A2BE2;
   --color-zinc-950: #09090b;
 }
@@ -9,12 +10,12 @@
 @layer base {
   body {
     @apply bg-zinc-950 text-zinc-300 font-sans antialiased overflow-x-hidden;
-    /* Add extremely subtle background technical grid */
     background-image: 
       linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
     background-size: 48px 48px;
     background-position: center top;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 
   ::selection {
@@ -27,6 +28,10 @@
       linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px);
   }
+
+  body.light-mode ::selection {
+    @apply bg-electric-cyan-light text-white;
+  }
 }
 
 .technical-border {
@@ -38,6 +43,10 @@
   bottom: 0; left: 0; right: 0;
   height: 1px;
   background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0) 100%);
+}
+
+body.light-mode .technical-border::after {
+  background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0) 100%);
 }
 
 /* Custom scrollbar for deep dark themes */
@@ -63,31 +72,61 @@ body.light-mode ::-webkit-scrollbar-thumb {
   background: #a1a1aa;
 }
 
+body.light-mode ::-webkit-scrollbar-thumb:hover {
+  background: #0891B2;
+}
+
+/* ── Light-mode background overrides ── */
+
 body.light-mode .bg-zinc-950,
 body.light-mode .bg-black {
   background-color: #ffffff !important;
 }
 
-body.light-mode .bg-zinc-950\/80,
-body.light-mode .bg-zinc-900\/20,
-body.light-mode .bg-zinc-900\/10,
-body.light-mode .bg-black\/50 {
-  background-color: rgba(255, 255, 255, 0.85) !important;
+body.light-mode .bg-zinc-950\/80 {
+  background-color: rgba(255, 255, 255, 0.92) !important;
 }
+
+body.light-mode .bg-zinc-950\/50 {
+  background-color: rgba(255, 255, 255, 0.7) !important;
+}
+
+body.light-mode .bg-zinc-900\/20,
+body.light-mode .bg-zinc-900\/10 {
+  background-color: rgba(241, 245, 249, 0.8) !important;
+}
+
+body.light-mode .bg-black\/50 {
+  background-color: rgba(241, 245, 249, 0.9) !important;
+}
+
+/* ── Light-mode text overrides ── */
 
 body.light-mode .text-zinc-100 {
   color: #0f172a !important;
 }
 
-body.light-mode .text-zinc-300,
-body.light-mode .text-zinc-400 {
+body.light-mode .text-white {
+  color: #0f172a !important;
+}
+
+body.light-mode .text-zinc-300 {
   color: #334155 !important;
 }
 
-body.light-mode .text-zinc-500,
-body.light-mode .text-zinc-600 {
+body.light-mode .text-zinc-400 {
+  color: #475569 !important;
+}
+
+body.light-mode .text-zinc-500 {
   color: #64748b !important;
 }
+
+body.light-mode .text-zinc-600 {
+  color: #94a3b8 !important;
+}
+
+/* ── Light-mode border overrides ── */
 
 body.light-mode .border-zinc-800,
 body.light-mode .border-zinc-800\/50,
@@ -95,6 +134,113 @@ body.light-mode .border-zinc-800\/80 {
   border-color: #cbd5e1 !important;
 }
 
-body.light-mode .divide-zinc-800 {
+body.light-mode .border-zinc-700 {
+  border-color: #94a3b8 !important;
+}
+
+body.light-mode .divide-zinc-800 > :not(:last-child) {
   border-color: #cbd5e1 !important;
+}
+
+body.light-mode .border-white\/40,
+body.light-mode .border-white\/20 {
+  border-color: rgba(15, 23, 42, 0.2) !important;
+}
+
+/* ── Light-mode accent colour adjustment ── */
+
+body.light-mode .text-electric-cyan {
+  color: #0891B2 !important;
+}
+
+body.light-mode .bg-electric-cyan {
+  background-color: #0891B2 !important;
+}
+
+body.light-mode .border-electric-cyan,
+body.light-mode .border-electric-cyan\/50,
+body.light-mode .border-electric-cyan\/60 {
+  border-color: #0891B2 !important;
+}
+
+body.light-mode .shadow-\[0_0_12px_rgba\(0\,240\,255\,0\.8\)\] {
+  box-shadow: 0 0 12px rgba(8, 145, 178, 0.5) !important;
+}
+
+body.light-mode .shadow-\[0_0_8px_\#00F0FF\] {
+  box-shadow: 0 0 8px #0891B2 !important;
+}
+
+body.light-mode .shadow-\[0_0_30px_rgba\(0\,240\,255\,0\.15\)\] {
+  box-shadow: 0 0 30px rgba(8, 145, 178, 0.12) !important;
+}
+
+/* ── Light-mode interactive/hover states ── */
+
+body.light-mode .hover\:bg-zinc-800:hover {
+  background-color: #e2e8f0 !important;
+}
+
+body.light-mode .hover\:bg-zinc-900:hover {
+  background-color: #f1f5f9 !important;
+}
+
+body.light-mode .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+body.light-mode .hover\:text-zinc-100:hover {
+  color: #0f172a !important;
+}
+
+body.light-mode .hover\:text-zinc-300:hover {
+  color: #334155 !important;
+}
+
+body.light-mode .hover\:border-zinc-600:hover {
+  border-color: #64748b !important;
+}
+
+body.light-mode .hover\:border-zinc-700:hover {
+  border-color: #94a3b8 !important;
+}
+
+body.light-mode .hover\:border-electric-cyan:hover {
+  border-color: #0891B2 !important;
+}
+
+body.light-mode .hover\:bg-electric-cyan\/10:hover {
+  background-color: rgba(8, 145, 178, 0.1) !important;
+}
+
+body.light-mode .hover\:bg-electric-cyan\/5:hover,
+body.light-mode .bg-electric-cyan\/5 {
+  background-color: rgba(8, 145, 178, 0.05) !important;
+}
+
+body.light-mode .bg-electric-cyan\/10 {
+  background-color: rgba(8, 145, 178, 0.1) !important;
+}
+
+body.light-mode .bg-electric-cyan\/20 {
+  background-color: rgba(8, 145, 178, 0.15) !important;
+}
+
+/* ── Light-mode grid stage cards ── */
+
+body.light-mode .bg-zinc-800\/50 {
+  background-color: #cbd5e1 !important;
+}
+
+/* ── Light-mode backdrop blur panels ── */
+
+body.light-mode .backdrop-blur-sm,
+body.light-mode .backdrop-blur-md {
+  backdrop-filter: blur(12px);
+}
+
+/* ── Light-mode error styling ── */
+
+body.light-mode .bg-red-500\/10 {
+  background-color: rgba(239, 68, 68, 0.08) !important;
 }

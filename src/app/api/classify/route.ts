@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
+// gpt-4o-mini is ideal for simple classification — fast, cheap, and accurate
+// enough for mapping questions to a single subject label. No need for a
+// heavier model on this trivial task.
+const CLASSIFY_MODEL = "gpt-4o-mini";
+
 interface ClassifyQuestion {
   question_text?: string;
 }
@@ -33,7 +38,7 @@ export async function POST(req: Request) {
       .join('\n');
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: CLASSIFY_MODEL,
       max_tokens: 32,
       messages: [
         {

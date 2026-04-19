@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
+// gpt-4o excels at vision tasks and OCR-like text extraction from images.
+// Using "high" detail mode ensures the model receives full-resolution image
+// tiles, which is critical for accurately reading small or dense exam text.
+// gpt-4o-mini with "low" detail was misreading text and producing wrong answers.
+const DETECT_MODEL = "gpt-4o";
+const IMAGE_DETAIL: "low" | "high" | "auto" = "high";
+
 interface DetectedQuestion {
   question_text: string;
   question_type: string;
@@ -44,13 +51,13 @@ export async function POST(req: Request) {
     }
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: DETECT_MODEL,
       max_tokens: 1024,
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: "Extract all exam questions from this image. Return JSON: {\"questions\":[{\"question_text\":\"...\",\"question_type\":\"multiple_choice|true_false|fill_in_blank|free_response\",\"options\":[\"...\"]}]}. If none visible: {\"questions\":[]}."
+          content: "You are an expert OCR and document analysis system. Your job is to extract all exam/test questions from the provided image with perfect accuracy. Read every word carefully, preserving the exact original text including numbers, symbols, and formatting. Return JSON: {\"questions\":[{\"question_text\":\"...\",\"question_type\":\"multiple_choice|true_false|fill_in_blank|free_response\",\"options\":[\"...\"]}]}. If no questions are visible: {\"questions\":[]}."
         },
         {
           role: "user",
@@ -59,7 +66,7 @@ export async function POST(req: Request) {
               type: "image_url",
               image_url: {
                 url: `data:image/jpeg;base64,${imageBase64}`,
-                detail: "low"
+                detail: IMAGE_DETAIL
               }
             }
           ]

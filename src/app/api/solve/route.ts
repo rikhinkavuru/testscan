@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
+// gpt-4o provides stronger reasoning for solving academic questions across
+// STEM, humanities, and other domains. Worth the cost increase over gpt-4o-mini
+// because accuracy on answers is the primary value proposition of this tool.
+const SOLVE_MODEL = "gpt-4o";
+
 interface SolveResult {
   id: string;
   answer: string | null;
@@ -25,8 +30,8 @@ function getOpenAIClient(): OpenAI {
 
 // Process questions in batches to stay within model context limits.
 const BATCH_SIZE = 25;
-// Budget ~150 output tokens per question for answer + short explanation.
-const TOKENS_PER_QUESTION = 150;
+// Budget ~200 output tokens per question for answer + explanation.
+const TOKENS_PER_QUESTION = 200;
 
 export async function POST(req: Request) {
   try {
@@ -51,13 +56,13 @@ export async function POST(req: Request) {
       }).join('\n');
 
       const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: SOLVE_MODEL,
         max_tokens: Math.min(4096, batch.length * TOKENS_PER_QUESTION),
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content: "Solve each exam question. Return JSON: {\"answers\":[{\"id\":\"...\",\"answer\":\"...\",\"explanation\":\"brief reason\",\"confidence\":\"high|medium|low\",\"selected_option\":\"letter or null\"}]}."
+            content: "You are an expert academic problem solver. Solve each exam question accurately and thoroughly. Show your reasoning. Return JSON: {\"answers\":[{\"id\":\"...\",\"answer\":\"...\",\"explanation\":\"step-by-step reasoning\",\"confidence\":\"high|medium|low\",\"selected_option\":\"letter or null\"}]}."
           },
           {
             role: "user",
