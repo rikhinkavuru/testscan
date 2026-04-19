@@ -4,9 +4,9 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util';
 let ffmpeg: FFmpeg | null = null;
 const MAX_UPLOAD_BYTES = 150 * 1024 * 1024; // 150MB
 const MAX_VIDEO_DURATION_SEC = 30 * 60; // 30 minutes
-const MAX_EXTRACTED_FRAMES = 45;
-const BASE_FPS = 0.5;
-const MIN_FPS = 0.1;
+const MAX_EXTRACTED_FRAMES = 200;
+const BASE_FPS = 1.0;
+const MIN_FPS = 0.15;
 const TARGET_WIDTH = 480;
 
 export async function initFFmpeg(): Promise<FFmpeg> {
@@ -137,7 +137,7 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
       '-an',
       '-sn',
       '-vf', frameFilter,
-      '-q:v', '6',
+      '-q:v', '10',
       '-frames:v', `${MAX_EXTRACTED_FRAMES}`,
       'out/frame_%d.jpg'
     ]);
@@ -182,7 +182,7 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const currentPixels = getPixels(canvas);
 
-        if (lastPixelData && isSimilar(lastPixelData, currentPixels, 0.90)) {
+        if (lastPixelData && isSimilar(lastPixelData, currentPixels, 0.97)) {
           continue;
         }
 

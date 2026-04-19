@@ -45,11 +45,12 @@ export async function POST(req: Request) {
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
+      max_tokens: 1024,
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: "You are an exam assistant. Look at this frame from a screen recording of someone scrolling through a test. Extract every visible question. Return a JSON object with a single key 'questions' representing an array: { \"questions\": [{ \"question_text\": \"\", \"question_type\": \"multiple_choice|true_false|fill_in_blank|free_response\", \"options\": [\"string\"] }] }. If no question is visible, return { \"questions\": [] }."
+          content: "Extract all exam questions from this image. Return JSON: {\"questions\":[{\"question_text\":\"...\",\"question_type\":\"multiple_choice|true_false|fill_in_blank|free_response\",\"options\":[\"...\"]}]}. If none visible: {\"questions\":[]}."
         },
         {
           role: "user",
@@ -57,7 +58,8 @@ export async function POST(req: Request) {
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${imageBase64}`
+                url: `data:image/jpeg;base64,${imageBase64}`,
+                detail: "low"
               }
             }
           ]

@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-interface SolveResponse {
+interface SolveResult {
+  id: string;
   answer: string | null;
   explanation: string;
   confidence: 'high' | 'medium' | 'low';
   selected_option: string | null;
+}
+
+interface BatchQuestion {
+  id: string;
+  question_text: string;
+  options?: string[];
 }
 
 function getOpenAIClient(): OpenAI {
@@ -16,41 +23,63 @@ function getOpenAIClient(): OpenAI {
   return new OpenAI({ apiKey });
 }
 
+const BATCH_SIZE = 25;
+
 export async function POST(req: Request) {
   try {
     const openai = getOpenAIClient();
-    const { question_text, question_type, options } = await req.json();
+    const body = await req.json();
 
-    if (!question_text) {
-      return NextResponse.json({ error: 'No question text provided' }, { status: 400 });
+    // Support batch mode: { questions: [...] }
+    const questions: BatchQuestion[] = Array.isArray(body.questions) ? body.questions : [];
+
+    if (questions.length === 0) {
+      return NextResponse.json({ answers: [] });
     }
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert tutor. Solve this exam question. Show step-by-step reasoning. For multiple choice, state the correct letter and explain why. Return JSON exactly matching this format: { \"answer\": \"string\", \"explanation\": \"string\", \"confidence\": \"high|medium|low\", \"selected_option\": \"string|null\" }"
-        },
-        {
-          role: "user",
-          content: `Question: ${question_text}\nType: ${question_type}\nOptions: ${JSON.stringify(options || [])}`
+    const allResults: SolveResult[] = [];
+
+    for (let i = 0; i < questions.length; i += BATCH_SIZE) {
+      const batch = questions.slice(i, i + BATCH_SIZE);
+
+      const questionsText = batch.map((q, idx) => {
+        const opts = q.options && q.options.length > 0 ? ` Options: ${q.options.join('; ')}` : '';
+        return `${idx + 1}. [${q.id}] ${q.question_text}${opts}`;
+      }).join('\n');
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_tokens: Math.min(4096, batch.length * 150),
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: "Solve each exam question. Return JSON: {\"answers\":[{\"id\":\"...\",\"answer\":\"...\",\"explanation\":\"brief reason\",\"confidence\":\"high|medium|low\",\"selected_option\":\"letter or null\"}]}."
+          },
+          {
+            role: "user",
+            content: questionsText
+          }
+        ],
+      });
+
+      const content = response.choices[0].message?.content || '{"answers":[]}';
+      try {
+        const parsed = JSON.parse(content) as { answers?: SolveResult[] };
+        if (Array.isArray(parsed.answers)) {
+          allResults.push(...parsed.answers);
         }
-      ],
-    });
-
-    const content = response.choices[0].message?.content || '{}';
-    let data: SolveResponse;
-    try {
-      data = JSON.parse(content) as SolveResponse;
-    } catch {
-      throw new Error("Invalid format from LLM");
+      } catch {
+        // If parsing fails for this batch, push null results
+        for (const q of batch) {
+          allResults.push({ id: q.id, answer: null, explanation: 'Parse error', confidence: 'low', selected_option: null });
+        }
+      }
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({ answers: allResults });
   } catch (error: unknown) {
     console.error('Error in solve route:', error);
-    return NextResponse.json({ answer: null, explanation: 'Failed to solve due to an error.', confidence: 'low', selected_option: null }, { status: 200 });
+    return NextResponse.json({ answers: [] }, { status: 200 });
   }
 }

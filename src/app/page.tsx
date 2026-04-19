@@ -122,7 +122,7 @@ export default function Home() {
       for (const frame of frames) {
         const ret = await worker.recognize(frame.base64);
         const words = ret.data.text.trim().split(/\s+/).filter(w => w.length > 0);
-        if (words.length >= 20) {
+        if (words.length >= 8) {
           textRichFrames.push(frame);
         }
       }
@@ -241,19 +241,38 @@ export default function Home() {
       updateStep('detect', 'completed');
 
       updateStep('solve', 'active', `Solving ${uniqueFound.length} unique questions...`);
-      for (const q of uniqueFound) {
-        try {
-          const res = await fetch('/api/solve', {
-            method: 'POST',
-            body: JSON.stringify({ question_text: q.raw_text, options: q.options }),
-            headers: { 'Content-Type': 'application/json' }
-          });
-          const solveData = await res.json();
-          q.answer = solveData.answer;
-          q.explanation = solveData.explanation;
-          q.confidence = solveData.confidence;
-          q.selected_option = solveData.selected_option;
-        } catch {
+      try {
+        const solvePayload = uniqueFound.map(q => ({
+          id: q.id,
+          question_text: q.raw_text,
+          options: q.options
+        }));
+        const res = await fetch('/api/solve', {
+          method: 'POST',
+          body: JSON.stringify({ questions: solvePayload }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const solveData = await res.json();
+        const answersMap = new Map<string, { answer?: string; explanation?: string; confidence?: string; selected_option?: string }>();
+        if (Array.isArray(solveData.answers)) {
+          for (const a of solveData.answers) {
+            if (a.id) answersMap.set(a.id, a);
+          }
+        }
+        for (const q of uniqueFound) {
+          const solved = answersMap.get(q.id);
+          if (solved) {
+            q.answer = solved.answer || null;
+            q.explanation = solved.explanation || null;
+            q.confidence = solved.confidence || 'low';
+            q.selected_option = solved.selected_option || null;
+          } else {
+            q.answer = null;
+            q.confidence = 'low';
+          }
+        }
+      } catch {
+        for (const q of uniqueFound) {
           q.answer = null;
           q.confidence = 'low';
         }
@@ -264,7 +283,7 @@ export default function Home() {
       try {
         const clsRes = await fetch('/api/classify', {
           method: 'POST',
-          body: JSON.stringify({ questions: uniqueFound }),
+          body: JSON.stringify({ questions: uniqueFound.slice(0, 3).map(q => ({ question_text: q.raw_text })) }),
           headers: { 'Content-Type': 'application/json' }
         });
         const clsData = await clsRes.json();
