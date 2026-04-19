@@ -63,38 +63,38 @@ body.light-mode ::-webkit-scrollbar-thumb {
   background: #a1a1aa;
 }
 
-body.light-mode .app-light .bg-zinc-950,
-body.light-mode .app-light .bg-black {
+body.light-mode .bg-zinc-950,
+body.light-mode .bg-black {
   background-color: #ffffff !important;
 }
 
-body.light-mode .app-light .bg-zinc-950\/80,
-body.light-mode .app-light .bg-zinc-900\/20,
-body.light-mode .app-light .bg-zinc-900\/10,
-body.light-mode .app-light .bg-black\/50 {
+body.light-mode .bg-zinc-950\/80,
+body.light-mode .bg-zinc-900\/20,
+body.light-mode .bg-zinc-900\/10,
+body.light-mode .bg-black\/50 {
   background-color: rgba(255, 255, 255, 0.85) !important;
 }
 
-body.light-mode .app-light .text-zinc-100 {
+body.light-mode .text-zinc-100 {
   color: #0f172a !important;
 }
 
-body.light-mode .app-light .text-zinc-300,
-body.light-mode .app-light .text-zinc-400 {
+body.light-mode .text-zinc-300,
+body.light-mode .text-zinc-400 {
   color: #334155 !important;
 }
 
-body.light-mode .app-light .text-zinc-500,
-body.light-mode .app-light .text-zinc-600 {
+body.light-mode .text-zinc-500,
+body.light-mode .text-zinc-600 {
   color: #64748b !important;
 }
 
-body.light-mode .app-light .border-zinc-800,
-body.light-mode .app-light .border-zinc-800\/50,
-body.light-mode .app-light .border-zinc-800\/80 {
+body.light-mode .border-zinc-800,
+body.light-mode .border-zinc-800\/50,
+body.light-mode .border-zinc-800\/80 {
   border-color: #cbd5e1 !important;
 }
 
-body.light-mode .app-light .divide-zinc-800 {
+body.light-mode .divide-zinc-800 {
   border-color: #cbd5e1 !important;
 }

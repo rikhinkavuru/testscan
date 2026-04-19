@@ -39,7 +39,6 @@ export default function Home() {
   const [usageCount, setUsageCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isLightMode, setIsLightMode] = useState(false);
 
   const [steps, setSteps] = useState([
     { id: 'extract', label: 'Extracting frames...', status: 'idle' as StepStatus, subtext: '' },
@@ -63,9 +62,7 @@ export default function Home() {
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
     const syncTheme = () => {
-      const nextLight = mediaQuery.matches;
-      setIsLightMode(nextLight);
-      document.body.classList.toggle('light-mode', nextLight);
+      document.body.classList.toggle('light-mode', mediaQuery.matches);
     };
     syncTheme();
     mediaQuery.addEventListener('change', syncTheme);
@@ -315,7 +312,7 @@ export default function Home() {
   const confidencePercent = finalQuestions.length ? Math.round((highConfCount / finalQuestions.length) * 100) : 0;
 
   return (
-    <div className={`min-h-screen bg-transparent font-sans flex flex-col relative w-full ${isLightMode ? 'app-light' : ''}`}>
+    <div className="min-h-screen bg-transparent font-sans flex flex-col relative w-full">
       {/* Immersive Top Bar */}
       <header className="w-full border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="w-full px-8 h-14 flex items-center justify-between">
