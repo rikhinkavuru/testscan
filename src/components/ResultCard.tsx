@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Image, { type ImageLoaderProps } from 'next/image';
 
 interface ResultCardProps {
   questionNumber: number;
@@ -18,6 +19,7 @@ export default function ResultCard({
   confidence
 }: ResultCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const passthroughImageLoader = ({ src }: ImageLoaderProps) => src;
 
   const confidenceState = confidence?.toLowerCase() || 'low';
   
@@ -46,12 +48,16 @@ export default function ResultCard({
            </div>
           {thumbnailUrl ? (
             <div className="relative border border-zinc-800 bg-black aspect-video p-1 group-hover:border-zinc-700 transition-colors">
-               <img 
-                 src={thumbnailUrl} 
-                 alt={`Question ${questionNumber}`}
-                 className="w-full h-full object-cover filter grayscale hover:grayscale-0 transition-all duration-500"
-               />
-               <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/20"></div>
+                <Image
+                  loader={passthroughImageLoader}
+                  unoptimized
+                  src={thumbnailUrl}
+                  alt={`Question ${questionNumber}`}
+                  fill
+                  sizes="(max-width: 768px) 100vw, 256px"
+                  className="object-cover filter grayscale hover:grayscale-0 transition-all duration-500"
+                />
+                <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/20"></div>
             </div>
           ) : (
             <div className="w-full aspect-video bg-zinc-900 border border-zinc-800 border-dashed flex items-center justify-center p-4">

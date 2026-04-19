@@ -5,10 +5,10 @@ import UploadZone from '@/components/UploadZone';
 import ProgressTracker from '@/components/ProgressTracker';
 import ResultCard from '@/components/ResultCard';
 import { extractAndDeduplicateFrames } from '@/lib/ffmpegService';
-import { stringSimilarity, wordOverlapSimilarity } from '@/lib/stringSim';
-import { supabase } from '@/lib/supabase';
+import { wordOverlapSimilarity } from '@/lib/stringSim';
+import { getSupabaseClient } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
-import { Download, Copy, AlertCircle } from 'lucide-react';
+import { Download, Copy } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 
 type StepStatus = 'idle' | 'active' | 'completed';
@@ -18,7 +18,7 @@ interface Question {
   question_text?: string;
   raw_text: string;
   question_type: string;
-  options: any;
+  options: string[];
   thumbnail_base64?: string;
   thumbnail_url?: string;
   answer?: string | null;
@@ -33,9 +33,23 @@ interface ExtractedFrame {
   rawBase64Data: string;
 }
 
+interface DetectQuestion {
+  question_text?: string;
+  question_type?: string;
+  options?: string[];
+}
+
+interface DetectResponse {
+  questions?: DetectQuestion[];
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 export default function Home() {
   const [appState, setAppState] = useState<'UPLOAD' | 'READY' | 'ESTIMATE' | 'PROCESSING' | 'RESULTS'>('UPLOAD');
-  const [isOverLimit, setIsOverLimit] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -49,7 +63,6 @@ export default function Home() {
 
   const [finalQuestions, setFinalQuestions] = useState<Question[]>([]);
   const [subject, setSubject] = useState('Unknown');
-  const [jobId, setJobId] = useState('');
   
   const [pendingFrames, setPendingFrames] = useState<ExtractedFrame[]>([]);
   const [estimatedCost, setEstimatedCost] = useState(0);
@@ -121,9 +134,9 @@ export default function Home() {
 
       updateStep('extract', 'completed');
       return textRichFrames;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Processing error:', err);
-      setErrorMsg(err.message || String(err) || 'An unexpected error occurred during processing.');
+      setErrorMsg(getErrorMessage(err) || 'An unexpected error occurred during processing.');
       setAppState('UPLOAD');
       throw err;
     }
@@ -139,7 +152,7 @@ export default function Home() {
       setEstimatedCost(cost);
       setAppState('ESTIMATE');
     } catch (error) {
-      // Error state already set in prepareFrames.
+      // Error state already handled in prepareFrames; keep this for diagnostics.
       console.error('Cost estimation failed', error);
     }
   };
@@ -151,7 +164,7 @@ export default function Home() {
       setPendingFrames(frames);
       await confirmAndProcess(frames);
     } catch (error) {
-      // Error state already set in prepareFrames.
+      // Error state already handled in prepareFrames; keep this for diagnostics.
       console.error('Start flow failed', error);
     }
   };
@@ -161,8 +174,7 @@ export default function Home() {
     try {
       const workingFrames = framesToProcess ?? pendingFrames;
       updateStep('detect', 'active', `Running AI detection on ${workingFrames.length} meaningful frames...`);
-      let allDetected: Question[] = [];
-      let noQuestionFrames = 0;
+      const allDetected: Question[] = [];
 
       for (let i = 0; i < workingFrames.length; i++) {
         const frame = workingFrames[i];
@@ -172,15 +184,16 @@ export default function Home() {
             body: JSON.stringify({ imageBase64: frame.rawBase64Data }),
             headers: { 'Content-Type': 'application/json' }
           });
-          const data = await res.json();
+          const data = (await res.json()) as DetectResponse;
           if (data.questions && data.questions.length > 0) {
-            allDetected.push(...data.questions.map((q: any) => ({
+            allDetected.push(...data.questions.map((q) => ({
               ...q,
+              question_type: q.question_type || 'free_response',
+              options: Array.isArray(q.options) ? q.options : [],
               id: uuidv4(),
+              raw_text: q.question_text || '',
               thumbnail_base64: frame.base64
             })));
-          } else {
-            noQuestionFrames++;
           }
         } catch (e) {
           console.error("Detect frame failed", e);
@@ -234,7 +247,7 @@ export default function Home() {
           q.explanation = solveData.explanation;
           q.confidence = solveData.confidence;
           q.selected_option = solveData.selected_option;
-        } catch (e) {
+        } catch {
           q.answer = null;
           q.confidence = 'low';
         }
@@ -250,12 +263,12 @@ export default function Home() {
         });
         const clsData = await clsRes.json();
         setSubject(clsData.subject || 'Other');
-      } catch (e) {
+      } catch {
         setSubject('Other');
       }
 
       const jId = uuidv4();
-      setJobId(jId);
+      const supabase = getSupabaseClient();
 
       let solvedCount = 0;
       for (const q of uniqueFound) {
@@ -301,9 +314,9 @@ export default function Home() {
       updateStep('done', 'completed');
       setTimeout(() => setAppState('RESULTS'), 800);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Processing error:', err);
-      setErrorMsg(err.message || String(err) || 'An unexpected error occurred during processing.');
+      setErrorMsg(getErrorMessage(err) || 'An unexpected error occurred during processing.');
       setAppState('UPLOAD');
     }
   };
@@ -383,10 +396,10 @@ export default function Home() {
                  </div>
                  <div className="flex gap-4 w-full mt-10">
                     <button onClick={() => setAppState('UPLOAD')} className="flex-1 px-4 py-3 border border-zinc-800 text-zinc-400 font-mono text-xs hover:bg-zinc-800 hover:text-white transition-colors uppercase tracking-widest">Abort</button>
-                    <button onClick={confirmAndProcess} className="flex-1 px-4 py-3 bg-electric-cyan text-black font-mono font-bold text-xs hover:bg-white transition-colors uppercase tracking-widest">Authorize & Transmit</button>
-                 </div>
-             </div>
-          </div>
+                    <button onClick={() => void confirmAndProcess()} className="flex-1 px-4 py-3 bg-electric-cyan text-black font-mono font-bold text-xs hover:bg-white transition-colors uppercase tracking-widest">Authorize & Transmit</button>
+                  </div>
+              </div>
+           </div>
         )}
 
         {appState === 'PROCESSING' && (

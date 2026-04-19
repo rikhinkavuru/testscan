@@ -162,7 +162,8 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
       if (!(frameData instanceof Uint8Array)) {
         throw new Error(`Unexpected FFmpeg frame data for ${frame.name}.`);
       }
-      const blob = new Blob([frameData], { type: 'image/jpeg' });
+      const frameBytes = Uint8Array.from(frameData);
+      const blob = new Blob([frameBytes], { type: 'image/jpeg' });
 
       const url = URL.createObjectURL(blob);
       try {

@@ -1,12 +1,24 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+interface SolveResponse {
+  answer: string | null;
+  explanation: string;
+  confidence: 'high' | 'medium' | 'low';
+  selected_option: string | null;
+}
+
+function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is not configured.');
+  }
+  return new OpenAI({ apiKey });
+}
 
 export async function POST(req: Request) {
   try {
+    const openai = getOpenAIClient();
     const { question_text, question_type, options } = await req.json();
 
     if (!question_text) {
@@ -29,15 +41,15 @@ export async function POST(req: Request) {
     });
 
     const content = response.choices[0].message?.content || '{}';
-    let data;
+    let data: SolveResponse;
     try {
-        data = JSON.parse(content);
-    } catch(e) {
-        throw new Error("Invalid format from LLM");
+      data = JSON.parse(content) as SolveResponse;
+    } catch {
+      throw new Error("Invalid format from LLM");
     }
 
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in solve route:', error);
     return NextResponse.json({ answer: null, explanation: 'Failed to solve due to an error.', confidence: 'low', selected_option: null }, { status: 200 });
   }
