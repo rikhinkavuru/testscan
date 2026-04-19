@@ -5,10 +5,10 @@ import UploadZone from '@/components/UploadZone';
 import ProgressTracker from '@/components/ProgressTracker';
 import ResultCard from '@/components/ResultCard';
 import { extractAndDeduplicateFrames } from '@/lib/ffmpegService';
-import { stringSimilarity, wordOverlapSimilarity } from '@/lib/stringSim';
-import { supabase } from '@/lib/supabase';
+import { wordOverlapSimilarity } from '@/lib/stringSim';
+import { getSupabaseClient } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
-import { Download, Copy, AlertCircle } from 'lucide-react';
+import { Download, Copy } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 
 type StepStatus = 'idle' | 'active' | 'completed';
@@ -18,7 +18,7 @@ interface Question {
   question_text?: string;
   raw_text: string;
   question_type: string;
-  options: any;
+  options: string[];
   thumbnail_base64?: string;
   thumbnail_url?: string;
   answer?: string | null;
@@ -28,11 +28,31 @@ interface Question {
   question_number?: number;
 }
 
+interface ExtractedFrame {
+  base64: string;
+  rawBase64Data: string;
+}
+
+interface DetectQuestion {
+  question_text?: string;
+  question_type?: string;
+  options?: string[];
+}
+
+interface DetectResponse {
+  questions?: DetectQuestion[];
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 export default function Home() {
-  const [appState, setAppState] = useState<'UPLOAD' | 'ESTIMATE' | 'PROCESSING' | 'RESULTS'>('UPLOAD');
-  const [isOverLimit, setIsOverLimit] = useState(false);
+  const [appState, setAppState] = useState<'UPLOAD' | 'READY' | 'ESTIMATE' | 'PROCESSING' | 'RESULTS'>('UPLOAD');
   const [usageCount, setUsageCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [steps, setSteps] = useState([
     { id: 'extract', label: 'Extracting frames...', status: 'idle' as StepStatus, subtext: '' },
@@ -43,9 +63,8 @@ export default function Home() {
 
   const [finalQuestions, setFinalQuestions] = useState<Question[]>([]);
   const [subject, setSubject] = useState('Unknown');
-  const [jobId, setJobId] = useState('');
   
-  const [pendingFrames, setPendingFrames] = useState<any[]>([]);
+  const [pendingFrames, setPendingFrames] = useState<ExtractedFrame[]>([]);
   const [estimatedCost, setEstimatedCost] = useState(0);
 
   useEffect(() => {
@@ -53,15 +72,36 @@ export default function Home() {
     setUsageCount(uses);
   }, []);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
+    const syncTheme = () => {
+      document.body.classList.toggle('light-mode', mediaQuery.matches);
+    };
+    syncTheme();
+    mediaQuery.addEventListener('change', syncTheme);
+    return () => mediaQuery.removeEventListener('change', syncTheme);
+  }, []);
+
   const updateStep = (id: string, status: StepStatus, subtext?: string) => {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, status, subtext: subtext ?? s.subtext } : s));
   };
 
-  const handleUpload = async (file: File) => {
+  const bumpUsage = () => {
     const newCount = usageCount + 1;
     localStorage.setItem('testscan_uses', newCount.toString());
     setUsageCount(newCount);
+  };
 
+  const handleUpload = (file: File) => {
+    setSelectedFile(file);
+    setPendingFrames([]);
+    setEstimatedCost(0);
+    setErrorMsg(null);
+    setAppState('READY');
+  };
+
+  const prepareFrames = async (file: File): Promise<ExtractedFrame[]> => {
+    bumpUsage();
     setAppState('PROCESSING');
     setErrorMsg(null);
     setSteps(prev => prev.map(s => ({ ...s, status: 'idle', subtext: '' })));
@@ -92,45 +132,74 @@ export default function Home() {
          throw new Error("No textual data dense enough to process. AI analysis aborted.");
       }
 
-      setPendingFrames(textRichFrames);
       updateStep('extract', 'completed');
-      
-      const estQuestions = textRichFrames.length; // assumes ~1 Q per frame 
-      const cost = (textRichFrames.length * 0.001) + (estQuestions * 0.003);
-      setEstimatedCost(cost);
-      setAppState('ESTIMATE');
-
-    } catch (err: any) {
+      return textRichFrames;
+    } catch (err: unknown) {
       console.error('Processing error:', err);
-      setErrorMsg(err.message || String(err) || 'An unexpected error occurred during processing.');
+      setErrorMsg(getErrorMessage(err) || 'An unexpected error occurred during processing.');
       setAppState('UPLOAD');
+      throw err;
     }
   };
 
-  const confirmAndProcess = async () => {
+  const seeHowMuchItCosts = async () => {
+    if (!selectedFile) return;
+    try {
+      const frames = await prepareFrames(selectedFile);
+      setPendingFrames(frames);
+      const estQuestions = frames.length; // assumes ~1 Q per frame
+      const cost = (frames.length * 0.001) + (estQuestions * 0.003);
+      setEstimatedCost(cost);
+      setAppState('ESTIMATE');
+    } catch (error) {
+      // Error state already handled in prepareFrames; keep this for diagnostics.
+      console.error('Cost estimation failed', error);
+    }
+  };
+
+  const startNow = async () => {
+    if (!selectedFile) return;
+    try {
+      const frames = await prepareFrames(selectedFile);
+      setPendingFrames(frames);
+      await confirmAndProcess(frames);
+    } catch (error) {
+      // Error state already handled in prepareFrames; keep this for diagnostics.
+      console.error('Start flow failed', error);
+    }
+  };
+
+  const handleAuthorizeAndTransmit = () => {
+    confirmAndProcess().catch((error) => {
+      console.error('Authorize flow failed', error);
+    });
+  };
+
+  const confirmAndProcess = async (framesToProcess?: ExtractedFrame[]) => {
     setAppState('PROCESSING');
     try {
-      updateStep('detect', 'active', `Running AI detection on ${pendingFrames.length} meaningful frames...`);
-      let allDetected: Question[] = [];
-      let noQuestionFrames = 0;
+      const workingFrames = framesToProcess ?? pendingFrames;
+      updateStep('detect', 'active', `Running AI detection on ${workingFrames.length} meaningful frames...`);
+      const allDetected: Question[] = [];
 
-      for (let i = 0; i < pendingFrames.length; i++) {
-        const frame = pendingFrames[i];
+      for (let i = 0; i < workingFrames.length; i++) {
+        const frame = workingFrames[i];
         try {
           const res = await fetch('/api/detect', {
             method: 'POST',
             body: JSON.stringify({ imageBase64: frame.rawBase64Data }),
             headers: { 'Content-Type': 'application/json' }
           });
-          const data = await res.json();
+          const data = (await res.json()) as DetectResponse;
           if (data.questions && data.questions.length > 0) {
-            allDetected.push(...data.questions.map((q: any) => ({
+            allDetected.push(...data.questions.map((q) => ({
               ...q,
+              question_type: q.question_type || 'free_response',
+              options: Array.isArray(q.options) ? q.options : [],
               id: uuidv4(),
+              raw_text: q.question_text || '',
               thumbnail_base64: frame.base64
             })));
-          } else {
-            noQuestionFrames++;
           }
         } catch (e) {
           console.error("Detect frame failed", e);
@@ -184,7 +253,7 @@ export default function Home() {
           q.explanation = solveData.explanation;
           q.confidence = solveData.confidence;
           q.selected_option = solveData.selected_option;
-        } catch (e) {
+        } catch {
           q.answer = null;
           q.confidence = 'low';
         }
@@ -200,12 +269,12 @@ export default function Home() {
         });
         const clsData = await clsRes.json();
         setSubject(clsData.subject || 'Other');
-      } catch (e) {
+      } catch {
         setSubject('Other');
       }
 
       const jId = uuidv4();
-      setJobId(jId);
+      const supabase = getSupabaseClient();
 
       let solvedCount = 0;
       for (const q of uniqueFound) {
@@ -251,9 +320,9 @@ export default function Home() {
       updateStep('done', 'completed');
       setTimeout(() => setAppState('RESULTS'), 800);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Processing error:', err);
-      setErrorMsg(err.message || String(err) || 'An unexpected error occurred during processing.');
+      setErrorMsg(getErrorMessage(err) || 'An unexpected error occurred during processing.');
       setAppState('UPLOAD');
     }
   };
@@ -305,6 +374,21 @@ export default function Home() {
           </div>
         )}
 
+        {appState === 'READY' && selectedFile && (
+          <div className="flex-1 flex flex-col items-center justify-center animate-in fade-in duration-700">
+            <div className="border border-zinc-800 bg-zinc-900/20 backdrop-blur-sm p-10 max-w-xl w-full text-center">
+              <h2 className="font-mono text-sm tracking-[0.3em] uppercase text-zinc-500 mb-6">Upload Ready</h2>
+              <p className="text-zinc-300 font-light text-lg mb-2">Loaded file:</p>
+              <p className="font-mono text-electric-cyan text-sm break-all">{selectedFile.name}</p>
+              <div className="flex flex-col sm:flex-row gap-4 w-full mt-10">
+                <button onClick={() => setAppState('UPLOAD')} className="flex-1 px-4 py-3 border border-zinc-800 text-zinc-400 font-mono text-xs hover:bg-zinc-800 hover:text-white transition-colors uppercase tracking-widest">Choose Different File</button>
+                <button onClick={seeHowMuchItCosts} className="flex-1 px-4 py-3 border border-electric-cyan/60 text-electric-cyan font-mono font-bold text-xs hover:bg-electric-cyan/10 transition-colors uppercase tracking-widest">See How Much It Costs</button>
+                <button onClick={startNow} className="flex-1 px-4 py-3 bg-electric-cyan text-black font-mono font-bold text-xs hover:bg-white transition-colors uppercase tracking-widest">Start</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {appState === 'ESTIMATE' && (
           <div className="flex-1 flex flex-col items-center justify-center animate-in fade-in duration-1000">
              <div className="border border-zinc-800 bg-zinc-900/20 backdrop-blur-sm p-12 max-w-xl w-full text-center">
@@ -318,10 +402,10 @@ export default function Home() {
                  </div>
                  <div className="flex gap-4 w-full mt-10">
                     <button onClick={() => setAppState('UPLOAD')} className="flex-1 px-4 py-3 border border-zinc-800 text-zinc-400 font-mono text-xs hover:bg-zinc-800 hover:text-white transition-colors uppercase tracking-widest">Abort</button>
-                    <button onClick={confirmAndProcess} className="flex-1 px-4 py-3 bg-electric-cyan text-black font-mono font-bold text-xs hover:bg-white transition-colors uppercase tracking-widest">Authorize & Transmit</button>
-                 </div>
-             </div>
-          </div>
+                    <button onClick={handleAuthorizeAndTransmit} className="flex-1 px-4 py-3 bg-electric-cyan text-black font-mono font-bold text-xs hover:bg-white transition-colors uppercase tracking-widest">Authorize & Transmit</button>
+                  </div>
+              </div>
+           </div>
         )}
 
         {appState === 'PROCESSING' && (
