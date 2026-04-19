@@ -28,7 +28,9 @@ function readStoredMode(): ThemeMode {
   return 'system';
 }
 
-// Track whether the component has hydrated on the client
+// Detect client-side hydration without calling setState inside an effect.
+// subscribe is a no-op because hydration status never changes after mount.
+// getSnapshot returns true (client), getServerSnapshot returns false (SSR).
 function useHydrated(): boolean {
   return useSyncExternalStore(
     () => () => {},
@@ -64,6 +66,8 @@ export default function ThemeToggle() {
     const next = order[(order.indexOf(mode) + 1) % order.length];
     setMode(next);
     localStorage.setItem(STORAGE_KEY, next);
+    // The useEffect will apply the theme on the next render via the mode dependency,
+    // but we also apply immediately for instant visual feedback before re-render.
     syncTheme(next);
   };
 
