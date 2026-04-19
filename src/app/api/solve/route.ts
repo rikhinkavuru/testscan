@@ -23,7 +23,10 @@ function getOpenAIClient(): OpenAI {
   return new OpenAI({ apiKey });
 }
 
+// Process questions in batches to stay within model context limits.
 const BATCH_SIZE = 25;
+// Budget ~150 output tokens per question for answer + short explanation.
+const TOKENS_PER_QUESTION = 150;
 
 export async function POST(req: Request) {
   try {
@@ -49,7 +52,7 @@ export async function POST(req: Request) {
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
-        max_tokens: Math.min(4096, batch.length * 150),
+        max_tokens: Math.min(4096, batch.length * TOKENS_PER_QUESTION),
         response_format: { type: "json_object" },
         messages: [
           {

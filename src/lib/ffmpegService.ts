@@ -6,6 +6,8 @@ const MAX_UPLOAD_BYTES = 150 * 1024 * 1024; // 150MB
 const MAX_VIDEO_DURATION_SEC = 30 * 60; // 30 minutes
 const MAX_EXTRACTED_FRAMES = 200;
 const BASE_FPS = 1.0;
+// MIN_FPS is the floor when MAX_EXTRACTED_FRAMES/duration yields a very low rate.
+// For long videos the effective FPS = max(MIN_FPS, min(BASE_FPS, MAX_EXTRACTED_FRAMES/duration)).
 const MIN_FPS = 0.15;
 const TARGET_WIDTH = 480;
 
