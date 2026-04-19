@@ -10,6 +10,8 @@ interface ResultCardProps {
   confidence: string | null;
 }
 
+const passthroughImageLoader = ({ src }: ImageLoaderProps) => src;
+
 export default function ResultCard({
   questionNumber,
   thumbnailUrl,
@@ -19,7 +21,6 @@ export default function ResultCard({
   confidence
 }: ResultCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const passthroughImageLoader = ({ src }: ImageLoaderProps) => src;
 
   const confidenceState = confidence?.toLowerCase() || 'low';
   

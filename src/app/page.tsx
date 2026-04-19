@@ -169,6 +169,10 @@ export default function Home() {
     }
   };
 
+  const handleAuthorizeAndTransmit = () => {
+    void confirmAndProcess();
+  };
+
   const confirmAndProcess = async (framesToProcess?: ExtractedFrame[]) => {
     setAppState('PROCESSING');
     try {
@@ -396,7 +400,7 @@ export default function Home() {
                  </div>
                  <div className="flex gap-4 w-full mt-10">
                     <button onClick={() => setAppState('UPLOAD')} className="flex-1 px-4 py-3 border border-zinc-800 text-zinc-400 font-mono text-xs hover:bg-zinc-800 hover:text-white transition-colors uppercase tracking-widest">Abort</button>
-                    <button onClick={() => void confirmAndProcess()} className="flex-1 px-4 py-3 bg-electric-cyan text-black font-mono font-bold text-xs hover:bg-white transition-colors uppercase tracking-widest">Authorize & Transmit</button>
+                    <button onClick={handleAuthorizeAndTransmit} className="flex-1 px-4 py-3 bg-electric-cyan text-black font-mono font-bold text-xs hover:bg-white transition-colors uppercase tracking-widest">Authorize & Transmit</button>
                   </div>
               </div>
            </div>
