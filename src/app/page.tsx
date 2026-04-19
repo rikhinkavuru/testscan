@@ -141,8 +141,9 @@ export default function Home() {
       const cost = (frames.length * 0.001) + (estQuestions * 0.003);
       setEstimatedCost(cost);
       setAppState('ESTIMATE');
-    } catch {
+    } catch (error) {
       // Error state already set in prepareFrames.
+      console.error('Cost estimation failed', error);
     }
   };
 
@@ -152,8 +153,9 @@ export default function Home() {
       const frames = await prepareFrames(selectedFile);
       setPendingFrames(frames);
       await confirmAndProcess(frames);
-    } catch {
+    } catch (error) {
       // Error state already set in prepareFrames.
+      console.error('Start flow failed', error);
     }
   };
 
