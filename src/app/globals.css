@@ -20,6 +20,13 @@
   ::selection {
     @apply bg-electric-cyan text-black;
   }
+
+  body.light-mode {
+    @apply bg-zinc-100 text-zinc-800;
+    background-image:
+      linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px);
+  }
 }
 
 .technical-border {
@@ -46,4 +53,48 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #00F0FF;
+}
+
+body.light-mode ::-webkit-scrollbar-track {
+  background: #e4e4e7;
+}
+
+body.light-mode ::-webkit-scrollbar-thumb {
+  background: #a1a1aa;
+}
+
+body.light-mode .app-light .bg-zinc-950,
+body.light-mode .app-light .bg-black {
+  background-color: #ffffff !important;
+}
+
+body.light-mode .app-light .bg-zinc-950\/80,
+body.light-mode .app-light .bg-zinc-900\/20,
+body.light-mode .app-light .bg-zinc-900\/10,
+body.light-mode .app-light .bg-black\/50 {
+  background-color: rgba(255, 255, 255, 0.85) !important;
+}
+
+body.light-mode .app-light .text-zinc-100 {
+  color: #0f172a !important;
+}
+
+body.light-mode .app-light .text-zinc-300,
+body.light-mode .app-light .text-zinc-400 {
+  color: #334155 !important;
+}
+
+body.light-mode .app-light .text-zinc-500,
+body.light-mode .app-light .text-zinc-600 {
+  color: #64748b !important;
+}
+
+body.light-mode .app-light .border-zinc-800,
+body.light-mode .app-light .border-zinc-800\/50,
+body.light-mode .app-light .border-zinc-800\/80 {
+  border-color: #cbd5e1 !important;
+}
+
+body.light-mode .app-light .divide-zinc-800 {
+  border-color: #cbd5e1 !important;
 }

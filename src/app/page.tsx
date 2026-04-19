@@ -28,11 +28,18 @@ interface Question {
   question_number?: number;
 }
 
+interface ExtractedFrame {
+  base64: string;
+  rawBase64Data: string;
+}
+
 export default function Home() {
-  const [appState, setAppState] = useState<'UPLOAD' | 'ESTIMATE' | 'PROCESSING' | 'RESULTS'>('UPLOAD');
+  const [appState, setAppState] = useState<'UPLOAD' | 'READY' | 'ESTIMATE' | 'PROCESSING' | 'RESULTS'>('UPLOAD');
   const [isOverLimit, setIsOverLimit] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isLightMode, setIsLightMode] = useState(false);
 
   const [steps, setSteps] = useState([
     { id: 'extract', label: 'Extracting frames...', status: 'idle' as StepStatus, subtext: '' },
@@ -45,7 +52,7 @@ export default function Home() {
   const [subject, setSubject] = useState('Unknown');
   const [jobId, setJobId] = useState('');
   
-  const [pendingFrames, setPendingFrames] = useState<any[]>([]);
+  const [pendingFrames, setPendingFrames] = useState<ExtractedFrame[]>([]);
   const [estimatedCost, setEstimatedCost] = useState(0);
 
   useEffect(() => {
@@ -53,15 +60,38 @@ export default function Home() {
     setUsageCount(uses);
   }, []);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
+    const syncTheme = () => {
+      const nextLight = mediaQuery.matches;
+      setIsLightMode(nextLight);
+      document.body.classList.toggle('light-mode', nextLight);
+    };
+    syncTheme();
+    mediaQuery.addEventListener('change', syncTheme);
+    return () => mediaQuery.removeEventListener('change', syncTheme);
+  }, []);
+
   const updateStep = (id: string, status: StepStatus, subtext?: string) => {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, status, subtext: subtext ?? s.subtext } : s));
   };
 
-  const handleUpload = async (file: File) => {
+  const bumpUsage = () => {
     const newCount = usageCount + 1;
     localStorage.setItem('testscan_uses', newCount.toString());
     setUsageCount(newCount);
+  };
 
+  const handleUpload = (file: File) => {
+    setSelectedFile(file);
+    setPendingFrames([]);
+    setEstimatedCost(0);
+    setErrorMsg(null);
+    setAppState('READY');
+  };
+
+  const prepareFrames = async (file: File): Promise<ExtractedFrame[]> => {
+    bumpUsage();
     setAppState('PROCESSING');
     setErrorMsg(null);
     setSteps(prev => prev.map(s => ({ ...s, status: 'idle', subtext: '' })));
@@ -92,30 +122,51 @@ export default function Home() {
          throw new Error("No textual data dense enough to process. AI analysis aborted.");
       }
 
-      setPendingFrames(textRichFrames);
       updateStep('extract', 'completed');
-      
-      const estQuestions = textRichFrames.length; // assumes ~1 Q per frame 
-      const cost = (textRichFrames.length * 0.001) + (estQuestions * 0.003);
-      setEstimatedCost(cost);
-      setAppState('ESTIMATE');
-
+      return textRichFrames;
     } catch (err: any) {
       console.error('Processing error:', err);
       setErrorMsg(err.message || String(err) || 'An unexpected error occurred during processing.');
       setAppState('UPLOAD');
+      throw err;
     }
   };
 
-  const confirmAndProcess = async () => {
+  const seeHowMuchItCosts = async () => {
+    if (!selectedFile) return;
+    try {
+      const frames = await prepareFrames(selectedFile);
+      setPendingFrames(frames);
+      const estQuestions = frames.length; // assumes ~1 Q per frame
+      const cost = (frames.length * 0.001) + (estQuestions * 0.003);
+      setEstimatedCost(cost);
+      setAppState('ESTIMATE');
+    } catch {
+      // Error state already set in prepareFrames.
+    }
+  };
+
+  const startNow = async () => {
+    if (!selectedFile) return;
+    try {
+      const frames = await prepareFrames(selectedFile);
+      setPendingFrames(frames);
+      await confirmAndProcess(frames);
+    } catch {
+      // Error state already set in prepareFrames.
+    }
+  };
+
+  const confirmAndProcess = async (framesToProcess?: ExtractedFrame[]) => {
     setAppState('PROCESSING');
     try {
-      updateStep('detect', 'active', `Running AI detection on ${pendingFrames.length} meaningful frames...`);
+      const workingFrames = framesToProcess ?? pendingFrames;
+      updateStep('detect', 'active', `Running AI detection on ${workingFrames.length} meaningful frames...`);
       let allDetected: Question[] = [];
       let noQuestionFrames = 0;
 
-      for (let i = 0; i < pendingFrames.length; i++) {
-        const frame = pendingFrames[i];
+      for (let i = 0; i < workingFrames.length; i++) {
+        const frame = workingFrames[i];
         try {
           const res = await fetch('/api/detect', {
             method: 'POST',
@@ -262,7 +313,7 @@ export default function Home() {
   const confidencePercent = finalQuestions.length ? Math.round((highConfCount / finalQuestions.length) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-transparent font-sans flex flex-col relative w-full">
+    <div className={`min-h-screen bg-transparent font-sans flex flex-col relative w-full ${isLightMode ? 'app-light' : ''}`}>
       {/* Immersive Top Bar */}
       <header className="w-full border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="w-full px-8 h-14 flex items-center justify-between">
@@ -301,6 +352,21 @@ export default function Home() {
                 </div>
               )}
               <UploadZone onUpload={handleUpload} isOverLimit={false} />
+            </div>
+          </div>
+        )}
+
+        {appState === 'READY' && selectedFile && (
+          <div className="flex-1 flex flex-col items-center justify-center animate-in fade-in duration-700">
+            <div className="border border-zinc-800 bg-zinc-900/20 backdrop-blur-sm p-10 max-w-xl w-full text-center">
+              <h2 className="font-mono text-sm tracking-[0.3em] uppercase text-zinc-500 mb-6">Upload Ready</h2>
+              <p className="text-zinc-300 font-light text-lg mb-2">Loaded file:</p>
+              <p className="font-mono text-electric-cyan text-sm break-all">{selectedFile.name}</p>
+              <div className="flex flex-col sm:flex-row gap-4 w-full mt-10">
+                <button onClick={() => setAppState('UPLOAD')} className="flex-1 px-4 py-3 border border-zinc-800 text-zinc-400 font-mono text-xs hover:bg-zinc-800 hover:text-white transition-colors uppercase tracking-widest">Choose Different File</button>
+                <button onClick={seeHowMuchItCosts} className="flex-1 px-4 py-3 border border-electric-cyan/60 text-electric-cyan font-mono font-bold text-xs hover:bg-electric-cyan/10 transition-colors uppercase tracking-widest">See How Much It Costs</button>
+                <button onClick={startNow} className="flex-1 px-4 py-3 bg-electric-cyan text-black font-mono font-bold text-xs hover:bg-white transition-colors uppercase tracking-widest">Start</button>
+              </div>
             </div>
           </div>
         )}
