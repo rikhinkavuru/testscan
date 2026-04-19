@@ -27,21 +27,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ subject: 'Other' }, { status: 200 });
     }
 
-    const first5 = questions
-      .slice(0, 5)
+    const first3 = questions
+      .slice(0, 3)
       .map((q) => q.question_text ?? '')
-      .join('\n---\n');
+      .join('\n');
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
+      max_tokens: 32,
       messages: [
         {
           role: "system",
-          content: "What academic subject is this exam? Return ONLY ONE word exactly from this list: Math, Algebra, Calculus, Biology, Chemistry, Physics, History, English, Economics, Psychology, or Other. Do not include any punctuation."
+          content: "Return ONE word for the academic subject: Math, Algebra, Calculus, Biology, Chemistry, Physics, History, English, Economics, Psychology, or Other."
         },
         {
           role: "user",
-          content: first5
+          content: first3
         }
       ],
     });
