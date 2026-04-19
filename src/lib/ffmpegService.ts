@@ -3,7 +3,7 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 let ffmpeg: FFmpeg | null = null;
 const MAX_UPLOAD_BYTES = 150 * 1024 * 1024; // 150MB
-const MAX_VIDEO_DURATION_SECONDS = 60 * 30; // 30 minutes
+const MAX_VIDEO_DURATION_SECONDS = 30 * 60; // 30 minutes
 const MAX_EXTRACTED_FRAMES = 45;
 const BASE_FPS = 0.5;
 const MIN_FPS = 0.1;
@@ -34,10 +34,14 @@ function getPixels(canvas: HTMLCanvasElement): Uint8ClampedArray {
 
 function isOutOfBoundsError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return (
-    message.toLowerCase().includes('memory access out of bounds') ||
-    message.toLowerCase().includes('runtimeerror')
-  );
+  return message.toLowerCase().includes('memory access out of bounds');
+}
+
+function ensureBlobUrl(url: string): string {
+  if (!url.startsWith('blob:')) {
+    throw new Error('Invalid local media URL.');
+  }
+  return url;
 }
 
 function computeFrameFilter(durationSeconds: number): string {
@@ -45,6 +49,7 @@ function computeFrameFilter(durationSeconds: number): string {
     durationSeconds > 0
       ? Math.max(MIN_FPS, Math.min(BASE_FPS, MAX_EXTRACTED_FRAMES / durationSeconds))
       : BASE_FPS;
+  // `-2` keeps aspect ratio while forcing an even height for JPEG/video codec compatibility.
   return `fps=${targetFps.toFixed(4)},scale=${TARGET_WIDTH}:-2`;
 }
 
@@ -57,7 +62,7 @@ async function readVideoDuration(file: File): Promise<number> {
       video.preload = 'metadata';
       video.onloadedmetadata = () => resolve(video.duration || 0);
       video.onerror = () => reject(new Error('Unable to read video metadata.'));
-      video.src = url;
+      video.src = ensureBlobUrl(url);
     });
 
     if (!Number.isFinite(duration) || duration <= 0) {
@@ -155,38 +160,42 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
     for (const frame of frames) {
       const frameData = await ff.readFile(`out/${frame.name}`);
       if (!(frameData instanceof Uint8Array)) {
-        continue;
+        throw new Error(`Unexpected FFmpeg frame data for ${frame.name}.`);
       }
       const blob = new Blob([frameData], { type: 'image/jpeg' });
 
       const url = URL.createObjectURL(blob);
-      const img = new Image();
-      await new Promise<void>((resolve) => {
-        img.onload = () => resolve();
-        img.src = url;
-      });
+      try {
+        const img = new Image();
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error(`Failed to decode extracted frame ${frame.name}.`));
+          img.src = ensureBlobUrl(url);
+        });
 
-      if (!lastPixelData) {
-        canvas.width = img.width;
-        canvas.height = img.height;
+        if (!lastPixelData) {
+          canvas.width = img.width;
+          canvas.height = img.height;
+        }
+
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const currentPixels = getPixels(canvas);
+
+        if (lastPixelData && isSimilar(lastPixelData, currentPixels, 0.90)) {
+          continue;
+        }
+
+        lastPixelData = currentPixels;
+        const dataUrl = await blobToBase64(blob);
+        const base64Data = dataUrl.split(',')[1];
+
+        validFrames.push({
+          base64: dataUrl,
+          rawBase64Data: base64Data
+        });
+      } finally {
+        URL.revokeObjectURL(url);
       }
-
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const currentPixels = getPixels(canvas);
-      URL.revokeObjectURL(url);
-
-      if (lastPixelData && isSimilar(lastPixelData, currentPixels, 0.90)) {
-        continue;
-      }
-
-      lastPixelData = currentPixels;
-      const dataUrl = await blobToBase64(blob);
-      const base64Data = dataUrl.split(',')[1];
-
-      validFrames.push({
-        base64: dataUrl,
-        rawBase64Data: base64Data
-      });
     }
 
     for (const frame of frames) {
