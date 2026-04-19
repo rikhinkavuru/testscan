@@ -10,6 +10,7 @@ import { getSupabaseClient } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 import { Download, Copy } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
+import ThemeToggle from '@/components/ThemeToggle';
 
 type StepStatus = 'idle' | 'active' | 'completed';
 
@@ -72,15 +73,7 @@ export default function Home() {
     setUsageCount(uses);
   }, []);
 
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
-    const syncTheme = () => {
-      document.body.classList.toggle('light-mode', mediaQuery.matches);
-    };
-    syncTheme();
-    mediaQuery.addEventListener('change', syncTheme);
-    return () => mediaQuery.removeEventListener('change', syncTheme);
-  }, []);
+  // Theme is now managed by the ThemeToggle component
 
   const updateStep = (id: string, status: StepStatus, subtext?: string) => {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, status, subtext: subtext ?? s.subtext } : s));
@@ -148,7 +141,11 @@ export default function Home() {
       const frames = await prepareFrames(selectedFile);
       setPendingFrames(frames);
       const estQuestions = frames.length; // assumes ~1 Q per frame
-      const cost = (frames.length * 0.001) + (estQuestions * 0.003);
+      // Updated cost estimate for gpt-4o (detect) + gpt-4o (solve) + gpt-4o-mini (classify)
+      const detectCost = frames.length * 0.005; // gpt-4o with high detail images
+      const solveCost = estQuestions * 0.004;    // gpt-4o text reasoning
+      const classifyCost = 0.0001;               // gpt-4o-mini trivial classification
+      const cost = detectCost + solveCost + classifyCost;
       setEstimatedCost(cost);
       setAppState('ESTIMATE');
     } catch (error) {
@@ -358,7 +355,9 @@ export default function Home() {
             <div className="w-2 h-2 bg-electric-cyan rounded-none animate-pulse shadow-[0_0_12px_rgba(0,240,255,0.8)]"></div>
             <span className="font-mono text-xs text-zinc-400 tracking-[0.2em] uppercase">SYSTEM // TestScan.OS</span>
           </div>
-          {appState === 'RESULTS' && (
+          <div className="flex items-center gap-4">
+            <ThemeToggle />
+            {appState === 'RESULTS' && (
             <div className="flex items-center gap-6">
               <button className="hidden sm:flex text-xs font-mono text-zinc-500 hover:text-zinc-300 tracking-wider items-center gap-2 transition-colors uppercase" onClick={() => {
                 const text = finalQuestions.map(q => `${q.question_number}. ${q.answer}`).join('\\n');
@@ -371,7 +370,8 @@ export default function Home() {
                 <Download className="w-3 h-3" /> Export_PDF
               </button>
             </div>
-          )}
+            )}
+          </div>
         </div>
       </header>
 
