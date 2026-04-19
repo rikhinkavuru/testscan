@@ -170,7 +170,9 @@ export default function Home() {
   };
 
   const handleAuthorizeAndTransmit = () => {
-    void confirmAndProcess();
+    confirmAndProcess().catch((error) => {
+      console.error('Authorize flow failed', error);
+    });
   };
 
   const confirmAndProcess = async (framesToProcess?: ExtractedFrame[]) => {

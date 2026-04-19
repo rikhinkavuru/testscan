@@ -3,7 +3,7 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 let ffmpeg: FFmpeg | null = null;
 const MAX_UPLOAD_BYTES = 150 * 1024 * 1024; // 150MB
-const MAX_VIDEO_DURATION_SECONDS = 30 * 60; // 30 minutes
+const MAX_VIDEO_DURATION_SEC = 30 * 60; // 30 minutes
 const MAX_EXTRACTED_FRAMES = 45;
 const BASE_FPS = 0.5;
 const MIN_FPS = 0.1;
@@ -115,7 +115,7 @@ export async function extractAndDeduplicateFrames(file: File): Promise<{ base64:
   }
 
   const durationSeconds = await readVideoDuration(file);
-  if (durationSeconds > MAX_VIDEO_DURATION_SECONDS) {
+  if (durationSeconds > MAX_VIDEO_DURATION_SEC) {
     throw new Error('Video is too long for local processing. Please keep uploads under 30 minutes.');
   }
 
