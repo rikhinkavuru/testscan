@@ -2,6 +2,12 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 let ffmpeg: FFmpeg | null = null;
+const MAX_UPLOAD_BYTES = 150 * 1024 * 1024; // 150MB
+const MAX_VIDEO_DURATION_SECONDS = 60 * 30; // 30 minutes
+const MAX_EXTRACTED_FRAMES = 45;
+const BASE_FPS = 0.5;
+const MIN_FPS = 0.1;
+const TARGET_WIDTH = 480;
 
 export async function initFFmpeg(): Promise<FFmpeg> {
   if (ffmpeg) return ffmpeg;
@@ -26,12 +32,51 @@ function getPixels(canvas: HTMLCanvasElement): Uint8ClampedArray {
   return ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 }
 
+function isOutOfBoundsError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.toLowerCase().includes('memory access out of bounds') ||
+    message.toLowerCase().includes('runtimeerror')
+  );
+}
+
+function computeFrameFilter(durationSeconds: number): string {
+  const targetFps =
+    durationSeconds > 0
+      ? Math.max(MIN_FPS, Math.min(BASE_FPS, MAX_EXTRACTED_FRAMES / durationSeconds))
+      : BASE_FPS;
+  return `fps=${targetFps.toFixed(4)},scale=${TARGET_WIDTH}:-2`;
+}
+
+async function readVideoDuration(file: File): Promise<number> {
+  const url = URL.createObjectURL(file);
+  const video = document.createElement('video');
+
+  try {
+    const duration = await new Promise<number>((resolve, reject) => {
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => resolve(video.duration || 0);
+      video.onerror = () => reject(new Error('Unable to read video metadata.'));
+      video.src = url;
+    });
+
+    if (!Number.isFinite(duration) || duration <= 0) {
+      throw new Error('Uploaded video has invalid metadata.');
+    }
+
+    return duration;
+  } finally {
+    URL.revokeObjectURL(url);
+    video.removeAttribute('src');
+    video.load();
+  }
+}
+
 // Simple pixel-based diff
 function isSimilar(data1: Uint8ClampedArray, data2: Uint8ClampedArray, threshold: number = 0.95): boolean {
   if (data1.length !== data2.length) return false;
   
   let matchCount = 0;
-  let totalPixels = data1.length / 4;
   
   // Sample every 4th pixel for speed (stride of 16 in raw byte array)
   let samples = 0;
@@ -60,90 +105,110 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export async function extractAndDeduplicateFrames(file: File): Promise<{ base64: string, rawBase64Data: string }[]> {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error('Video is too large for local processing. Please upload a file under 150MB.');
+  }
+
+  const durationSeconds = await readVideoDuration(file);
+  if (durationSeconds > MAX_VIDEO_DURATION_SECONDS) {
+    throw new Error('Video is too long for local processing. Please keep uploads under 30 minutes.');
+  }
+
+  const frameFilter = computeFrameFilter(durationSeconds);
   const ff = await initFFmpeg();
   
   const filename = 'input.mp4';
-  await ff.writeFile(filename, await fetchFile(file));
-  
-  // Create a directory to output frames
   try {
-    await ff.createDir('out');
-  } catch (e) {}
-  
-  // Extract 1 frame every 2 seconds (-r 0.5)
-  // Scale down a bit to speed up processing and save memory, if needed. 
-  // Let's use 1280x720 (720p) max.
-  await ff.exec([
-    '-i', filename,
-    '-an',
-    '-sn',
-    '-r', '0.5',
-    '-vf', 'scale=640:-1',
-    '-q:v', '5',
-    'out/frame_%d.jpg'
-  ]);
-  
-  const files = await ff.listDir('out');
-  const frames = files.filter(f => f.name.endsWith('.jpg')).sort((a, b) => {
-    const matchA = a.name.match(/\d+/);
-    const matchB = b.name.match(/\d+/);
-    const numA = matchA ? parseInt(matchA[0], 10) : 0;
-    const numB = matchB ? parseInt(matchB[0], 10) : 0;
-    return numA - numB;
-  });
+    await ff.writeFile(filename, await fetchFile(file));
 
-  const validFrames: { base64: string, rawBase64Data: string }[] = [];
-  let lastPixelData: Uint8ClampedArray | null = null;
-  
-  // Hidden canvas for analyzing image data
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d')!;
+    try {
+      await ff.createDir('out');
+    } catch {
+      // Folder can already exist from a previous run.
+    }
 
-  for (const frame of frames) {
-    const frameData = await ff.readFile(`out/${frame.name}`);
-    const blob = new Blob([frameData as any], { type: 'image/jpeg' });
-    
-    // Convert to Image to draw on canvas for pixel comparison
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    await new Promise((resolve) => {
-      img.onload = resolve;
-      img.src = url;
+    await ff.exec([
+      '-i', filename,
+      '-an',
+      '-sn',
+      '-vf', frameFilter,
+      '-q:v', '6',
+      '-frames:v', `${MAX_EXTRACTED_FRAMES}`,
+      'out/frame_%d.jpg'
+    ]);
+
+    const files = await ff.listDir('out');
+    const frames = files.filter(f => f.name.endsWith('.jpg')).sort((a, b) => {
+      const matchA = a.name.match(/\d+/);
+      const matchB = b.name.match(/\d+/);
+      const numA = matchA ? parseInt(matchA[0], 10) : 0;
+      const numB = matchB ? parseInt(matchB[0], 10) : 0;
+      return numA - numB;
     });
 
-    if (!lastPixelData) {
+    const validFrames: { base64: string, rawBase64Data: string }[] = [];
+    let lastPixelData: Uint8ClampedArray | null = null;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+
+    for (const frame of frames) {
+      const frameData = await ff.readFile(`out/${frame.name}`);
+      if (!(frameData instanceof Uint8Array)) {
+        continue;
+      }
+      const blob = new Blob([frameData], { type: 'image/jpeg' });
+
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      await new Promise<void>((resolve) => {
+        img.onload = () => resolve();
+        img.src = url;
+      });
+
+      if (!lastPixelData) {
         canvas.width = img.width;
         canvas.height = img.height;
+      }
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const currentPixels = getPixels(canvas);
+      URL.revokeObjectURL(url);
+
+      if (lastPixelData && isSimilar(lastPixelData, currentPixels, 0.90)) {
+        continue;
+      }
+
+      lastPixelData = currentPixels;
+      const dataUrl = await blobToBase64(blob);
+      const base64Data = dataUrl.split(',')[1];
+
+      validFrames.push({
+        base64: dataUrl,
+        rawBase64Data: base64Data
+      });
     }
 
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const currentPixels = getPixels(canvas);
-    URL.revokeObjectURL(url);
-
-    if (lastPixelData && isSimilar(lastPixelData, currentPixels, 0.90)) {
-      // It's a duplicate frame, skip
-      continue;
+    for (const frame of frames) {
+      await ff.deleteFile(`out/${frame.name}`);
     }
-    
-    lastPixelData = currentPixels;
-    const dataUrl = await blobToBase64(blob);
-    const base64Data = dataUrl.split(',')[1];
-    
-    validFrames.push({
-      base64: dataUrl,
-       // raw base64 without data:image/jpeg;base64, prefix for API
-      rawBase64Data: base64Data
-    });
+
+    return validFrames;
+  } catch (error) {
+    if (isOutOfBoundsError(error)) {
+      throw new Error('Video is too large or too detailed for local processing. Try a shorter clip or lower resolution.');
+    }
+    throw error;
+  } finally {
+    try {
+      await ff.deleteFile(filename);
+    } catch {
+      // File may already be removed.
+    }
+    try {
+      await ff.deleteDir('out');
+    } catch {
+      // Directory may not exist.
+    }
   }
-  
-  // Cleanup
-  await ff.deleteFile(filename);
-  for (const frame of frames) {
-    await ff.deleteFile(`out/${frame.name}`);
-  }
-  try {
-    await ff.deleteDir('out');
-  } catch (e) {}
-  
-  return validFrames;
 }
